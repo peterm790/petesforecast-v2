@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- $Id: COPYING.xml,v 1.5 2025/01/12 21:49:45 jjg Exp $ -->
+<copying>
+  <authors>
+    <author>
+      <name>Christian Heine</name>
+      <org>University of Sydney</org>
+    </author>
+  </authors>
+  <license>
+    <informal>CC BY-SA 3.0</informal>
+    <year>2013</year>
+    <text href="http://creativecommons.org/licenses/by-sa/3.0/deed.en_US"/>
+  </license>
+  <src>
+    <format>GMT cpt files</format>
+    <link href="https://code.paleoearthlabs.org/geotimecpts/home">Palette respository</link>
+    <remark>Contributed to the archive by the author, October 2013</remark>
+  </src>
+  <distribute>
+    <qgis distribute="yes" license="cc3"/>
+  </distribute>
+</copying>
