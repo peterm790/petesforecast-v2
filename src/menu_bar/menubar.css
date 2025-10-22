@@ -1,0 +1,39 @@
+.pf-menubar-container{position:fixed;top:clamp(12px,2vh,24px);right:clamp(12px,2vh,24px);z-index:1000;--pf-panel-width:320px;--pf-glass-tint:rgba(0,0,0,.28)}
+.pf-menubar-container.hidden{display:none}
+.pf-menubar-wrap{display:flex;gap:clamp(6px,1.6vh,12px);align-items:flex-start;transform:translateX(0);transition:transform .3s ease}
+.pf-menubar-wrap.hidden{display:none}
+.pf-menubar-toggle{width:clamp(40px,3.5vw,56px);height:clamp(40px,3.5vw,56px);border-radius:clamp(10px,1vw,14px);border:1px solid rgba(255,255,255,.3);background:linear-gradient(135deg,rgba(255,149,0,.9),rgba(255,64,129,.9));color:#fff;backdrop-filter:blur(12px);box-shadow:0 12px 28px rgba(255,149,0,.28);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .2s ease,box-shadow .2s ease;font-size:clamp(20px,2vw,28px);line-height:1;font-weight:700;text-shadow:0 2px 6px rgba(0,0,0,.35)}
+.pf-menubar-toggle:hover{transform:scale(1.05);box-shadow:0 14px 32px rgba(255,149,0,.35)}
+.pf-menubar-sidebar{position:relative;width:clamp(260px,18vw,340px);display:flex;flex-direction:column;gap:clamp(8px,1.4vh,12px);border-radius:clamp(14px,1.4vw,20px);border:1px solid rgba(255,255,255,.2);background:linear-gradient(135deg,rgba(255,255,255,.15),rgba(255,255,255,.05));padding:clamp(12px,1.6vh,16px);box-shadow:0 18px 40px rgba(0,0,0,.35);backdrop-filter:blur(18px);overflow:hidden}
+.pf-menubar-sidebar::before{content:"";position:absolute;inset:0;background:var(--pf-glass-tint);pointer-events:none;z-index:0}
+.pf-menubar-panel{position:relative;border-radius:clamp(12px,1.2vw,16px);border:1px solid rgba(255,255,255,.2);background:linear-gradient(135deg,rgba(255,255,255,.25),rgba(255,255,255,.1));padding:clamp(10px,1.4vh,12px);box-shadow:0 8px 20px rgba(0,0,0,.25);overflow:hidden}
+.pf-menubar-panel::before{content:"";position:absolute;inset:0;background:rgba(0,0,0,.14);pointer-events:none;z-index:0}
+.pf-menubar-label{display:block;margin-bottom:clamp(6px,1vh,8px);font-size:clamp(11px,1.1vw,12px);font-weight:600;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.45)}
+.pf-menubar-select,.pf-menubar-button{width:100%;border-radius:clamp(8px,1vw,10px);border:1px solid rgba(255,255,255,.25);background:rgba(0,0,0,.25);color:#fff;padding:clamp(8px,1.2vh,10px);backdrop-filter:blur(10px);cursor:pointer}
+.pf-menubar-select{appearance:none}
+.pf-menubar-buttons{display:flex;gap:clamp(6px,1vh,8px)}
+.pf-menubar-button.active{background:linear-gradient(90deg,#ff7a18,#af002d 70%);color:#fff;box-shadow:0 8px 16px rgba(175,0,45,.35)}
+.pf-menubar-dropdown{border:1px solid rgba(255,255,255,.2);background:linear-gradient(135deg,rgba(53,0,107,.95),rgba(112,0,84,.95));color:#fff}
+.pf-menubar-container,.pf-menubar-sidebar,.pf-menubar-panel,.pf-menubar-toggle{pointer-events:auto}
+body .maplibregl-canvas{pointer-events:auto}
+
+/* Range (min/max) dual slider layout */
+.pf-menubar-range-title{margin-bottom:clamp(4px,0.8vh,6px);color:#fff;font-size:clamp(11px,1.1vw,12px);font-weight:600}
+.pf-menubar-range-row{display:flex;align-items:center;gap:clamp(6px,1vh,8px)}
+.pf-menubar-range-min,.pf-menubar-range-max{width:clamp(48px,8vw,64px);text-align:center;color:#fff;font-size:clamp(11px,1.1vw,12px)}
+.pf-menubar-range-wrap{position:relative;flex:1;height:clamp(22px,3vh,28px);display:flex;align-items:center}
+.pf-menubar-range-highlight{position:absolute;top:50%;transform:translateY(-50%);left:0;right:100%;height:clamp(4px,0.8vh,6px);background:rgba(0,0,0,.6);border-radius:4px;pointer-events:none;box-shadow:0 0 0 1px rgba(255,255,255,.15)}
+.pf-menubar-range-wrap input[type=range]{position:absolute;left:0;right:0;width:100%;background:transparent;height:clamp(22px,3vh,28px);pointer-events:none;-webkit-appearance:none;appearance:none}
+.pf-menubar-range-wrap input[type=range]::-webkit-slider-thumb{pointer-events:auto;-webkit-appearance:none;appearance:none;width:clamp(12px,1.6vh,16px);height:clamp(12px,1.6vh,16px);border-radius:50%;background:#fff;border:2px solid rgba(255,255,255,.4);box-shadow:0 0 0 2px rgba(0,0,0,.15)}
+.pf-menubar-range-wrap input[type=range]::-moz-range-thumb{pointer-events:auto;width:clamp(12px,1.6vh,16px);height:clamp(12px,1.6vh,16px);border-radius:50%;background:#fff;border:2px solid rgba(255,255,255,.4);box-shadow:0 0 0 2px rgba(0,0,0,.15)}
+.pf-menubar-range-wrap .pf-min{z-index:3}
+.pf-menubar-range-wrap .pf-max{z-index:4}
+
+/* Compact close button inside panel */
+.pf-menubar-close{position:absolute;top:clamp(6px,1vh,8px);right:clamp(6px,1vh,8px);width:clamp(22px,2.6vh,28px);height:clamp(22px,2.6vh,28px);border-radius:9999px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.18);color:#fff;backdrop-filter:blur(8px);box-shadow:0 6px 14px rgba(0,0,0,.25);cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700;transition:transform .15s ease,box-shadow .15s ease}
+.pf-menubar-close:hover{transform:scale(1.05);box-shadow:0 8px 18px rgba(0,0,0,.32)}
+
+/* Small open button (when collapsed) */
+.pf-menubar-open{width:clamp(28px,3vh,36px);height:clamp(28px,3vh,36px);border-radius:9999px;border:1px solid rgba(255,255,255,.35);background:linear-gradient(135deg,rgba(255,149,0,.9),rgba(255,64,129,.9));color:#fff;backdrop-filter:blur(8px);box-shadow:0 8px 18px rgba(0,0,0,.28);cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700;transition:transform .15s ease,box-shadow .15s ease}
+.pf-menubar-open:hover{transform:scale(1.05);box-shadow:0 10px 22px rgba(0,0,0,.36)}
+

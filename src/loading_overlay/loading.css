@@ -1,0 +1,45 @@
+.pf-loading-overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 999999;
+  pointer-events: all; /* capture clicks to block UI */
+}
+.pf-loading-overlay * { pointer-events: none; }
+
+.pf-loading-box {
+  background: rgba(30, 30, 40, 0.85);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: clamp(10px, 1.2vw, 12px);
+  padding: clamp(14px, 2.2vh, 20px) clamp(18px, 2.4vh, 28px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(8px, 1.6vh, 12px);
+  min-width: clamp(140px, 18vw, 180px);
+}
+
+.pf-loading-spinner {
+  width: clamp(24px, 3.6vh, 36px);
+  height: clamp(24px, 3.6vh, 36px);
+  border: clamp(3px, 0.5vh, 4px) solid rgba(255,255,255,0.25);
+  border-top-color: #60a5fa;
+  border-radius: 50%;
+  animation: pf-spin 1s linear infinite;
+}
+
+.pf-loading-text {
+  font-size: clamp(12px, 1.2vw, 14px);
+  font-weight: 600;
+}
+
+@keyframes pf-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+

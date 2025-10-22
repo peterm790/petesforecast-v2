@@ -1,0 +1,28 @@
+{
+    "categorical_freezing_rain_surface": {"min": 0, "max": 1, "unit": "presence/absence"},
+    "categorical_ice_pellets_surface": {"min": 0, "max": 1, "unit": "presence/absence"},
+    "categorical_rain_surface": {"min": 0, "max": 1, "unit": "presence/absence"},
+    "categorical_snow_surface": {"min": 0, "max": 1, "unit": "presence/absence"},
+    "downward_long_wave_radiation_flux_surface": {"min": 0, "max": 1000, "unit": "W/m^2"},
+    "downward_short_wave_radiation_flux_surface": {"min": 0, "max": 1400, "unit": "W/m^2"},
+    "geopotential_height_cloud_ceiling": {"min": 0, "max": 25000, "unit": "gpm"},
+    "maximum_temperature_2m": {"min": -90, "max": 60, "unit": "C"},
+    "minimum_temperature_2m": {"min": -90, "max": 60, "unit": "C"},
+    "percent_frozen_precipitation_surface": {"min": 0, "max": 100, "unit": "%"},
+    "precipitable_water_atmosphere": {"min": 0, "max": 100, "unit": "kg/m^2"},
+    "precipitation_surface": {"min": 0, "max": 0.05, "unit": "mm/s"},
+    "pressure_reduced_to_mean_sea_level": {"min": 87000, "max": 108000, "unit": "Pa"},
+    "pressure_surface": {"min": 30000, "max": 108000, "unit": "Pa"},
+    "relative_humidity_2m": {"min": 0, "max": 100, "unit": "%"},
+    "temperature_2m": {"min": -90, "max": 60, "unit": "C"},
+    "total_cloud_cover_atmosphere": {"min": 0, "max": 100, "unit": "%"},
+    "wind_u_100m": {"min": -150, "max": 150, "unit": "m/s"},
+    "wind_u_10m": {"min": -100, "max": 100, "unit": "m/s"},
+    "wind_v_100m": {"min": -150, "max": 150, "unit": "m/s"},
+    "wind_v_10m": {"min": -100, "max": 100, "unit": "m/s"},
+    "wind_speed_10m": {"min": 0, "max": 100, "unit": "m/s"},
+    "wind_speed_100m": {"min": 0, "max": 150, "unit": "m/s"},
+    "wind_vector_10m": {"min": -100, "max": 100, "unit": "m/s", "type": "vector"},
+    "wind_vector_100m": {"min": -150, "max": 150, "unit": "m/s", "type": "vector"}
+  }
+  

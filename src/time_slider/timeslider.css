@@ -1,0 +1,70 @@
+.pf-timeslider-container {
+  position: fixed;
+  left: 50%;
+  bottom: clamp(12px, 2.2vh, 24px);
+  transform: translateX(-50%);
+  z-index: 1000;
+  width: min(clamp(560px, 70vw, 900px), calc(100% - clamp(24px, 5vw, 48px)));
+}
+
+.pf-timeslider-wrap {
+  background: rgba(20, 20, 30, 0.6);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: clamp(12px, 1.6vw, 16px);
+  padding: clamp(8px, 1.6vh, 12px) clamp(12px, 2vh, 16px);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+}
+
+.pf-timeslider-label {
+  color: #fff;
+  font-size: clamp(11px, 1.1vw, 12px);
+  font-weight: 600;
+  margin-bottom: clamp(6px, 1vh, 8px);
+  text-align: center;
+}
+
+.pf-timeslider-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: clamp(8px, 1.6vh, 12px);
+  align-items: center;
+}
+
+.pf-timeslider-edge {
+  color: rgba(255,255,255,0.8);
+  font-size: clamp(11px, 1.1vw, 12px);
+  white-space: nowrap;
+}
+
+.pf-timeslider-input {
+  width: 100%;
+  appearance: none;
+  height: clamp(4px, 0.8vh, 6px);
+  background: linear-gradient(90deg, rgba(255,255,255,0.35), rgba(255,255,255,0.2));
+  border-radius: 9999px;
+  outline: none;
+}
+
+.pf-timeslider-input::-webkit-slider-thumb {
+  appearance: none;
+  width: clamp(14px, 2.2vh, 20px);
+  height: clamp(14px, 2.2vh, 20px);
+  border-radius: 9999px;
+  background: linear-gradient(135deg, #60a5fa, #2563eb);
+  border: clamp(2px, 0.5vh, 3px) solid #fff;
+  box-shadow: 0 6px 18px rgba(59,130,246,0.6);
+  cursor: pointer;
+}
+
+.pf-timeslider-input::-moz-range-thumb {
+  width: clamp(14px, 2.2vh, 20px);
+  height: clamp(14px, 2.2vh, 20px);
+  border-radius: 9999px;
+  background: linear-gradient(135deg, #60a5fa, #2563eb);
+  border: clamp(2px, 0.5vh, 3px) solid #fff;
+  box-shadow: 0 6px 18px rgba(59,130,246,0.6);
+  cursor: pointer;
+}
+
+
