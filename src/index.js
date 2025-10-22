@@ -60,12 +60,15 @@ async function fetchData(url, signal) {
     return { data: flat.subarray(0, planeSize), width, height };
 }
 
+const API_BASE = 'https://api.onlineweatherrouting.com';
+//const API_BASE_ORIGINAL = 'https://iyb260zpcg.execute-api.us-west-2.amazonaws.com';
+
 function buildRasterUrl(variableKey, lead, initIndex) {
-    return `https://iyb260zpcg.execute-api.us-west-2.amazonaws.com/bbox/-180.125,-90.125,179.875,90.125.npy?url=https%3A%2F%2Fdata.dynamical.org%2Fnoaa%2Fgfs%2Fforecast%2Flatest.zarr&variable=${encodeURIComponent(variableKey)}&isel=init_time%3D${encodeURIComponent(initIndex)}&isel=lead_time%3D${encodeURIComponent(lead)}&decode_times=true`;
+    return `${API_BASE}/bbox/-180.125,-90.125,179.875,90.125.npy?url=https%3A%2F%2Fdata.dynamical.org%2Fnoaa%2Fgfs%2Fforecast%2Flatest.zarr&variable=${encodeURIComponent(variableKey)}&isel=init_time%3D${encodeURIComponent(initIndex)}&isel=lead_time%3D${encodeURIComponent(lead)}&decode_times=true`;
 }
 
 function buildWindUrl(varKey, lead, initIndex) {
-    return `https://iyb260zpcg.execute-api.us-west-2.amazonaws.com/bbox/-180.125,-90.125,179.875,90.125.npy?url=https%3A%2F%2Fdata.dynamical.org%2Fnoaa%2Fgfs%2Fforecast%2Flatest.zarr&variable=${encodeURIComponent(varKey)}&isel=init_time%3D${encodeURIComponent(initIndex)}&isel=lead_time%3D${encodeURIComponent(lead)}&decode_times=true`;
+    return `${API_BASE}/bbox/-180.125,-90.125,179.875,90.125.npy?url=https%3A%2F%2Fdata.dynamical.org%2Fnoaa%2Fgfs%2Fforecast%2Flatest.zarr&variable=${encodeURIComponent(varKey)}&isel=init_time%3D${encodeURIComponent(initIndex)}&isel=lead_time%3D${encodeURIComponent(lead)}&decode_times=true`;
 }
 
 function leadsForFrequency(freq) {
