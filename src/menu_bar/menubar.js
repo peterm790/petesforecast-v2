@@ -256,6 +256,7 @@ export class MenuBar {
         const select = document.createElement('select');
         select.className = 'pf-menubar-select';
         const opts = [
+            ['24h', '24 Hours'],
             ['3d', '3 Days'],
             ['5d', '5 Days'],
             ['16d-3h', '16 Days (3 Hourly)']

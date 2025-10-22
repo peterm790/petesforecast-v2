@@ -2,7 +2,9 @@
 
 export class DataCache {
     constructor(options = {}) {
-        this.maxConcurrency = options.maxConcurrency || 8;
+        this.maxConcurrency = options.maxConcurrency || 6;
+        this.batchSize = options.batchSize || 6;
+        this.interBatchDelayMs = typeof options.interBatchDelayMs === 'number' ? options.interBatchDelayMs : 50;
         this.cache = new Map(); // key: `${initKey}|${variable}|${lead}` -> rasterData
     }
 
@@ -38,10 +40,19 @@ export class DataCache {
         let done = 0;
         const tick = () => { done++; if (onProgress) onProgress(done, total); };
 
-        // Concurrent fetching with bounded workers; log errors and continue
+        // Process in batches to avoid background throttling
         const queue = tasks.slice();
-        const workers = Array.from({ length: Math.min(this.maxConcurrency, queue.length) }, () => this._worker({ queue, signal, fetchData, tick }));
-        await Promise.all(workers);
+        while (queue.length > 0) {
+            const batch = queue.splice(0, this.batchSize);
+            const workers = Array.from({ length: Math.min(this.maxConcurrency, batch.length) }, (_, i) =>
+                this._worker({ queue: batch, signal, fetchData, tick })
+            );
+            await Promise.all(workers);
+            // Small delay between batches to mitigate background throttling
+            if (queue.length > 0) {
+                await new Promise(resolve => setTimeout(resolve, this.interBatchDelayMs));
+            }
+        }
     }
 
     async _worker({ queue, signal, fetchData, tick }) {

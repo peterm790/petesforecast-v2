@@ -4,9 +4,10 @@
 import { parseInitTimeToDate } from '../util.js';
 
 function hoursForFrequency(freq) {
+    if (freq === '24h') return Array.from({ length: 25 }, (_, i) => i);
     if (freq === '3d') return Array.from({ length: 73 }, (_, i) => i);
     if (freq === '5d') return Array.from({ length: 121 }, (_, i) => i);
-    if (freq === '16d-3h') return Array.from({ length: 129 }, (_, i) => i * 3);
+    //if (freq === '16d-3h') return Array.from({ length: 129 }, (_, i) => i * 3);
     throw new Error(`Unknown frequency: ${freq}`);
 }
 
