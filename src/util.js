@@ -1,7 +1,7 @@
 import { parsePalette } from 'cpt2js';
 
 // Preload all CPT files so nested subfolders can be resolved at runtime
-const CPT_RAW = import.meta.glob('./assets/cmaps/cpt-city/**/*.cpt', { as: 'raw' });
+const CPT_RAW = import.meta.glob('./assets/cmaps/cpt-city/**/*.cpt', { query: '?raw', import: 'default' });
 
 function extractCptDomain(cptText) {
     const lines = cptText.split(/\r?\n/);

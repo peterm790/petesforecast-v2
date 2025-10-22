@@ -1,5 +1,5 @@
 // Build-time discovery of available colormaps using Vite's globbing
-const CPT_FILES = import.meta.glob('/src/assets/cmaps/cpt-city/**/*.cpt');
+const CPT_FILES = import.meta.glob('/src/assets/cmaps/cpt-city/**/*.cpt', { query: '?raw', import: 'default' });
 import weatherVariables from '../assets/weather_variables.json';
 import { fetchInitTimeRange, generateInitTimes6h } from '../util.js';
 
