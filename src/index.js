@@ -133,7 +133,7 @@ async function renderFromCache(state, leadHours) {
 // Loading overlay and data cache (declared early to avoid TDZ in callbacks)
 const overlay = new LoadingOverlay();
 overlay.mount(document.body);
-const dataCache = new DataCache({ maxConcurrency: 100 });
+const dataCache = new DataCache({ maxConcurrency: 10 });
 let isCacheReady = false;
 let currentLeadHours = 0;
 let preloadToken = 0;
