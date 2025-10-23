@@ -12,7 +12,7 @@ import './loading_overlay/loading.css';
 import { DataCache } from './data/cache.js';
 import NPY from 'npyjs';
 import { MapboxOverlay } from '@deck.gl/mapbox';
-import { RasterLayer, ParticleLayer } from 'weatherlayers-gl';
+import { RasterLayer, ParticleLayer, TooltipControl, DirectionFormat, Placement } from 'weatherlayers-gl';
 import { ClipExtension } from '@deck.gl/extensions';
 import weatherVariables from './assets/weather_variables.json';
 
@@ -46,6 +46,39 @@ const deckOverlay = new MapboxOverlay({
     layers: []
 });
 map.addControl(deckOverlay);
+
+// WeatherLayers tooltip (click-to-pin)
+let tooltipControl = null;
+let tooltipPinned = false;
+let lastPickedLngLat = null; // [lng, lat]
+function attachTooltipControlIfNeeded() {
+    if (tooltipControl) return;
+    // Try to attach to Deck canvas parent for proper positioning
+    const deckInstance = /** @type {any} */(deckOverlay)._deck;
+    if (deckInstance && deckInstance.getCanvas && deckInstance.getCanvas()) {
+        tooltipControl = new TooltipControl({
+            unitFormat: { unit: '' },
+            directionFormat: DirectionFormat.VALUE,
+            followCursor: true,
+            followCursorOffset: 12,
+            followCursorPlacement: Placement.TOP
+        });
+        tooltipControl.addTo(deckInstance.getCanvas().parentElement);
+        // Initialize with current variable's unit
+        try { updateTooltipUnitFormat((() => menu && menu.getState ? menu.getState().variable : 'wind_speed_10m')()); } catch {}
+    }
+}
+
+function updateTooltipUnitFormat(variableKey) {
+    if (!tooltipControl) return;
+    const def = weatherVariables[variableKey] || {};
+    const unit = typeof def.unit === 'string' ? def.unit : '';
+    // Keep existing config, just update unit
+    try {
+        const cfg = tooltipControl.getConfig ? tooltipControl.getConfig() : { directionFormat: DirectionFormat.VALUE, followCursor: false };
+        tooltipControl.setConfig({ ...cfg, unitFormat: { unit } });
+    } catch {}
+}
 
 async function fetchData(url, signal) {
     const response = await fetch(url, { method: 'GET', signal });
@@ -148,6 +181,7 @@ async function renderFromCache(state, leadHours) {
         extensions: [new ClipExtension()],
         clipBounds: bounds,
         opacity: 0.6,
+        pickable: true,
         beforeId: 'physical_line_stream'
     });
 
@@ -167,7 +201,7 @@ async function renderFromCache(state, leadHours) {
             maxAge: 17,
             speedFactor: 8,
             width: 0.5,
-            color: [255, 255, 255],
+            color: [60, 70, 85],
             opacity: 0.6,
             animate: true
         });
@@ -175,6 +209,24 @@ async function renderFromCache(state, leadHours) {
     }
 
     deckOverlay.setProps({ layers });
+
+    // Keep last-rendered data for value picking
+    lastRasterImage = rasterImage;
+    lastUWind = uwind || null;
+    lastVWind = vwind || null;
+    if (uwind && vwind) {
+        const windDef = weatherVariables['wind_u_10m'];
+        lastUMin = typeof windDef.physMin === 'number' ? windDef.physMin : windDef.min;
+        lastUMax = typeof windDef.physMax === 'number' ? windDef.physMax : windDef.max;
+        const windDefV = weatherVariables['wind_v_10m'];
+        lastVMin = typeof windDefV.physMin === 'number' ? windDefV.physMin : windDefV.min;
+        lastVMax = typeof windDefV.physMax === 'number' ? windDefV.physMax : windDefV.max;
+    }
+
+    // If tooltip is pinned, re-sample on render to reflect new time/frame
+    if (tooltipPinned && lastPickedLngLat) {
+        try { updateTooltipAtLngLat(lastPickedLngLat[0], lastPickedLngLat[1]); } catch (err) { console.error('Re-sample failed:', err); }
+    }
 }
 
 // Loading overlay and data cache (declared early to avoid TDZ in callbacks)
@@ -308,4 +360,77 @@ menu.mount(document.body);
 timeSlider.setFromMenuState(menu.getState());
 await preloadAll(menu.getState());
 renderFromCache(menu.getState(), currentLeadHours);
+
+// Sampling helpers for tooltip
+let lastRasterImage = null; // { data: Float32Array, width, height }
+let lastUWind = null; // { data: Uint8Array, width, height }
+let lastVWind = null; // { data: Uint8Array, width, height }
+let lastUMin = 0, lastUMax = 0, lastVMin = 0, lastVMax = 0;
+
+function sampleIndexForLngLat(lng, lat, width, height) {
+    const minLon = bounds[0], minLat = bounds[1], maxLon = bounds[2], maxLat = bounds[3];
+    const x = Math.round(((lng - minLon) / (maxLon - minLon)) * (width - 1));
+    const y = Math.round(((maxLat - lat) / (maxLat - minLat)) * (height - 1));
+    const xi = Math.max(0, Math.min(width - 1, x));
+    const yi = Math.max(0, Math.min(height - 1, y));
+    return yi * width + xi;
+}
+
+function sampleScalarAt(lng, lat) {
+    if (!lastRasterImage || !lastRasterImage.data) throw new Error('Raster image not available for sampling');
+    const { data, width, height } = lastRasterImage;
+    const idx = sampleIndexForLngLat(lng, lat, width, height);
+    return data[idx];
+}
+
+function sampleDirectionAt(lng, lat) {
+    if (!lastUWind || !lastVWind) throw new Error('Wind vector data not available');
+    if (lastUWind.width !== lastVWind.width || lastUWind.height !== lastVWind.height) throw new Error('Wind U/V dimensions mismatch');
+    const width = lastUWind.width, height = lastUWind.height;
+    const idx = sampleIndexForLngLat(lng, lat, width, height);
+    const u = lastUMin + (lastUWind.data[idx] / 255) * (lastUMax - lastUMin);
+    const v = lastVMin + (lastVWind.data[idx] / 255) * (lastVMax - lastVMin);
+    const deg = (Math.atan2(-u, -v) * 180 / Math.PI + 360) % 360; // from which it blows
+    return Math.round(deg);
+}
+
+function updateTooltipAtLngLat(lng, lat) {
+    attachTooltipControlIfNeeded();
+    if (!tooltipControl) return;
+    const value = sampleScalarAt(lng, lat);
+    let direction = undefined;
+    try { direction = sampleDirectionAt(lng, lat); } catch {}
+    const pt = map.project([lng, lat]);
+    // Emulate a Deck pickingInfo at the click location so TooltipControl positions at that pixel
+    tooltipControl.updatePickingInfo({ x: pt.x, y: pt.y, raster: { value, ...(typeof direction === 'number' ? { direction } : {}) } });
+}
+
+// Update tooltip position when map moves/zooms
+map.on('move', () => {
+    if (tooltipPinned && lastPickedLngLat) {
+        try { updateTooltipAtLngLat(lastPickedLngLat[0], lastPickedLngLat[1]); } catch (err) { console.error('Move update failed:', err); }
+    }
+});
+
+// Click-to-pin tooltip
+map.on('click', (e) => {
+    try {
+        updateTooltipUnitFormat(menu.getState().variable);
+        updateTooltipAtLngLat(e.lngLat.lng, e.lngLat.lat);
+        tooltipPinned = true;
+        lastPickedLngLat = [e.lngLat.lng, e.lngLat.lat];
+    } catch (err) {
+        console.error('Tooltip sample failed:', err);
+        throw err;
+    }
+});
+
+// Esc to clear pinned tooltip
+window.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape') {
+        tooltipPinned = false;
+        lastPickedLngLat = null;
+        if (tooltipControl && tooltipControl.update) tooltipControl.update(undefined);
+    }
+});
 
