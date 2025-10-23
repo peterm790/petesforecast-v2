@@ -4,9 +4,9 @@
 import { parseInitTimeToDate } from '../util.js';
 
 function hoursForFrequency(freq) {
-    if (freq === '24h') return Array.from({ length: 25 }, (_, i) => i);
-    if (freq === '3d') return Array.from({ length: 73 }, (_, i) => i);
-    if (freq === '5d') return Array.from({ length: 121 }, (_, i) => i);
+    if (freq === '24h') return Array.from({ length: 24 }, (_, i) => i + 1);
+    if (freq === '3d') return Array.from({ length: 72 }, (_, i) => i + 1);
+    if (freq === '5d') return Array.from({ length: 120 }, (_, i) => i + 1);
     //if (freq === '16d-3h') return Array.from({ length: 129 }, (_, i) => i * 3);
     throw new Error(`Unknown frequency: ${freq}`);
 }
@@ -158,19 +158,19 @@ export class TimeSlider {
         this.slider.max = String(maxIndex);
         this.slider.min = '0';
         this.slider.step = '1';
-        this.minLabel.textContent = 'Hour 0';
+        this.minLabel.textContent = `Hour ${this.availableHours[0] || 1}`;
         this.maxLabel.textContent = `Hour ${this.availableHours[maxIndex]}`;
     }
 
     _emitHours() {
         if (!this.onChange) return;
-        const leadHours = this.availableHours[this.currentIndex] || 0;
+        const leadHours = (this.availableHours[this.currentIndex] !== undefined) ? this.availableHours[this.currentIndex] : (this.availableHours[0] || 1);
         this.onChange(leadHours);
     }
 
     _updateLabel() {
         if (!this.label) return;
-        const leadHours = this.availableHours[this.currentIndex] || 0;
+        const leadHours = (this.availableHours[this.currentIndex] !== undefined) ? this.availableHours[this.currentIndex] : (this.availableHours[0] || 1);
         if (!this.initTime) {
             this.label.textContent = `Lead ${leadHours}h`;
             return;

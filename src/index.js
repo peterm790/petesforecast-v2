@@ -2,7 +2,7 @@
 import 'maplibre-gl/dist/maplibre-gl.css';
 import maplibregl from 'maplibre-gl';
 import basemapStyle from './assets/basemapstyle.json';
-import { combineWindBytesToImage, createCMAP, fetchInitTimeRange, parseInitTimeToDate, generateInitTimes6h } from './util.js';
+import { combineWindBytesToImage, computeWindSpeedFromUVBytes, createCMAP, createCategoricalPalette, fetchInitTimeRange, parseInitTimeToDate, generateInitTimes6h } from './util.js';
 import { MenuBar } from '@menu_bar/menubar.js';
 import '@menu_bar/menubar.css';
 import { TimeSlider } from '@time_slider/timeslider.js';
@@ -29,12 +29,15 @@ function getInitIndexFromState(state) {
     return idx; // earliest=0 ... latest=max
 }
 
-const bounds = [-180.125, -90.125, 179.875, 90.125];
+const bounds = [-180.125, -80.125, 179.875, 80.125];
+
 const map = new maplibregl.Map({
     container: 'map', // container id
     style: basemapStyle, // local style
-    center: [0, 0], // starting position [lng, lat]
-    zoom: 2 // starting zoom
+    center: [12, -10], // starting position [lng, lat]
+    zoom: 2.5, // starting zoom
+    minZoom: 2,
+    maxZoom: 15
 });
 
 // deck.gl overlay interleaved with MapLibre
@@ -66,21 +69,25 @@ const API_BASE = 'https://api.onlineweatherrouting.com';
 function buildRasterUrl(variableKey, lead, initIndex) {
     const def = weatherVariables[variableKey];
     if (!def) throw new Error(`Unknown weather variable: ${variableKey}`);
-    const { min, max } = def;
-    return `${API_BASE}/bbox/-180.125,-90.125,179.875,90.125.npy?url=https%3A%2F%2Fdata.dynamical.org%2Fnoaa%2Fgfs%2Fforecast%2Flatest.zarr&variable=${encodeURIComponent(variableKey)}&isel=init_time%3D${encodeURIComponent(initIndex)}&isel=lead_time%3D${encodeURIComponent(lead)}&decode_times=true&npy_uint8=true&rescale=${encodeURIComponent(min)},${encodeURIComponent(max)}`;
+    const physMin = typeof def.physMin === 'number' ? def.physMin : def.min;
+    const physMax = typeof def.physMax === 'number' ? def.physMax : def.max;
+    const [minLon, minLat, maxLon, maxLat] = bounds;
+    return `${API_BASE}/bbox/${minLon},${minLat},${maxLon},${maxLat}.npy?url=https%3A%2F%2Fdata.dynamical.org%2Fnoaa%2Fgfs%2Fforecast%2Flatest.zarr&variable=${encodeURIComponent(variableKey)}&isel=init_time%3D${encodeURIComponent(initIndex)}&isel=lead_time%3D${encodeURIComponent(lead)}&decode_times=true&npy_uint8=true&rescale=${encodeURIComponent(physMin)},${encodeURIComponent(physMax)}`;
 }
 
 function buildWindUrl(varKey, lead, initIndex) {
     const def = weatherVariables[varKey];
     if (!def) throw new Error(`Unknown weather variable: ${varKey}`);
-    const { min, max } = def; // e.g., -30, 30 for wind components
-    return `${API_BASE}/bbox/-180.125,-90.125,179.875,90.125.npy?url=https%3A%2F%2Fdata.dynamical.org%2Fnoaa%2Fgfs%2Fforecast%2Flatest.zarr&variable=${encodeURIComponent(varKey)}&isel=init_time%3D${encodeURIComponent(initIndex)}&isel=lead_time%3D${encodeURIComponent(lead)}&decode_times=true&npy_uint8=true&rescale=${encodeURIComponent(min)},${encodeURIComponent(max)}`;
+    const physMin = typeof def.physMin === 'number' ? def.physMin : def.min;
+    const physMax = typeof def.physMax === 'number' ? def.physMax : def.max;
+    const [minLon, minLat, maxLon, maxLat] = bounds;
+    return `${API_BASE}/bbox/${minLon},${minLat},${maxLon},${maxLat}.npy?url=https%3A%2F%2Fdata.dynamical.org%2Fnoaa%2Fgfs%2Fforecast%2Flatest.zarr&variable=${encodeURIComponent(varKey)}&isel=init_time%3D${encodeURIComponent(initIndex)}&isel=lead_time%3D${encodeURIComponent(lead)}&decode_times=true&npy_uint8=true&rescale=${encodeURIComponent(physMin)},${encodeURIComponent(physMax)}`;
 }
 
 function leadsForFrequency(freq) {
-    if (freq === '24h') return Array.from({ length: 25 }, (_, i) => i);
-    if (freq === '3d') return Array.from({ length: 73 }, (_, i) => i);
-    if (freq === '5d') return Array.from({ length: 121 }, (_, i) => i);
+    if (freq === '24h') return Array.from({ length: 24 }, (_, i) => i + 1);
+    if (freq === '3d') return Array.from({ length: 72 }, (_, i) => i + 1);
+    if (freq === '5d') return Array.from({ length: 120 }, (_, i) => i + 1);
     //if (freq === '16d-3h') return Array.from({ length: 129 }, (_, i) => i * 3);
     throw new Error(`Unknown frequency: ${freq}`);
 }
@@ -91,14 +98,26 @@ async function renderFromCache(state, leadHours) {
     const dataMin = typeof state.dataMin === 'number' ? state.dataMin : def.min;
     const dataMax = typeof state.dataMax === 'number' ? state.dataMax : def.max;
     const initKey = getInitIndexFromState(state);
-    const rasterData = dataCache.get(state.variable, leadHours, initKey);
+    let rasterData = dataCache.get(state.variable, leadHours, initKey);
     const uwind = dataCache.get('wind_u_10m', leadHours, initKey);
     const vwind = dataCache.get('wind_v_10m', leadHours, initKey);
+    // If wind speed is requested, compute from U and V instead of fetching from server
+    if (state.variable === 'wind_speed_10m' && uwind && vwind) {
+        const uDef = weatherVariables['wind_u_10m'];
+        const vDef = weatherVariables['wind_v_10m'];
+        const uPhysMin = typeof uDef.physMin === 'number' ? uDef.physMin : uDef.min;
+        const uPhysMax = typeof uDef.physMax === 'number' ? uDef.physMax : uDef.max;
+        const vPhysMin = typeof vDef.physMin === 'number' ? vDef.physMin : vDef.min;
+        const vPhysMax = typeof vDef.physMax === 'number' ? vDef.physMax : vDef.max;
+        rasterData = computeWindSpeedFromUVBytes(uwind, vwind, uPhysMin, uPhysMax, vPhysMin, vPhysMax);
+    }
     if (!rasterData) {
         console.warn('Cache not ready for lead', leadHours, { hasVar: !!rasterData, hasU: !!uwind, hasV: !!vwind });
         return; // wait until variable is cached
     }
-    const palette = await createCMAP(state.colormapGenre, state.colormap, dataMin, dataMax);
+    const palette = def.categorical
+        ? createCategoricalPalette(def.absence_colour || '#000000', def.presence_colour || '#ffffff')
+        : await createCMAP(state.colormapGenre, state.colormap, dataMin, dataMax);
     let vectorWind = null;
     if (uwind && vwind) {
         vectorWind = combineWindBytesToImage(uwind, vwind);
@@ -110,8 +129,8 @@ async function renderFromCache(state, leadHours) {
         const src = rasterData.data;
         const expected = rasterData.width * rasterData.height;
         const out = new Float32Array(expected);
-        const minV = def.min;
-        const maxV = def.max;
+        const minV = typeof def.physMin === 'number' ? def.physMin : def.min;
+        const maxV = typeof def.physMax === 'number' ? def.physMax : def.max;
         const span = maxV - minV;
         for (let i = 0; i < expected; i++) {
             out[i] = minV + (src[i] / 255) * span;
@@ -122,12 +141,12 @@ async function renderFromCache(state, leadHours) {
     const raster = new RasterLayer({
         id: 'raster',
         image: rasterImage,
-        imageMinValue: def.min * 0.9999,
-        imageMaxValue: def.max * 1.0001,
+        imageMinValue: (typeof def.physMin === 'number' ? def.physMin : def.min),
+        imageMaxValue: (typeof def.physMax === 'number' ? def.physMax : def.max),
         bounds: bounds,
         palette: palette,
         extensions: [new ClipExtension()],
-        clipBounds: [-181, -85.051129, 181, 85.051129],
+        clipBounds: bounds,
         opacity: 0.6,
         beforeId: 'physical_line_stream'
     });
@@ -135,13 +154,15 @@ async function renderFromCache(state, leadHours) {
     const layers = [raster];
     if (uwind && vwind && vectorWind) {
         const windDef = weatherVariables['wind_u_10m'];
+        const windMin = typeof windDef.physMin === 'number' ? windDef.physMin : windDef.min;
+        const windMax = typeof windDef.physMax === 'number' ? windDef.physMax : windDef.max;
         const particle = new ParticleLayer({
             id: 'particle',
             image: vectorWind,
             bounds: bounds,
-            imageUnscale: [windDef.min, windDef.max],
+            imageUnscale: [windMin, windMax],
             extensions: [new ClipExtension()],
-            clipBounds: [-181, -85.051129, 181, 85.051129],
+            clipBounds: bounds,
             numParticles: 5000,
             maxAge: 17,
             speedFactor: 8,
@@ -178,10 +199,14 @@ function countCachedFrames(variables, initKey, leads) {
 async function preloadAll(state) {
     const myToken = ++preloadToken;
     const leads = leadsForFrequency(state.frequency);
-    // Ensure current lead is valid
-    currentLeadHours = leads[0] || 0;
+    // Ensure current lead is valid, but do not reset if already valid
+    if (!leads.includes(currentLeadHours)) {
+        currentLeadHours = leads[0] || 0;
+    }
     const initKey = getInitIndexFromState(state);
-    const variablesAll = [state.variable, 'wind_u_10m', 'wind_v_10m'];
+    const variablesAll = (state.variable === 'wind_speed_10m')
+        ? ['wind_u_10m', 'wind_v_10m']
+        : [state.variable, 'wind_u_10m', 'wind_v_10m'];
     const varsCount = variablesAll.length;
     // Track progress in hours for display, but keep completion based on all variables
     const itemsTotal = leads.length * varsCount;
@@ -265,13 +290,15 @@ const menu = new MenuBar({
     initialState: {
         initData: latestISO,
         frequency: '24h',
-        variable: 'temperature_2m',
+			variable: 'wind_speed_10m',
         colormapGenre: 'cmocean',
         colormap: 'thermal'
     },
-    onChange: async (state) => {
+    onChange: async (state, meta) => {
         timeSlider.setFromMenuState(state);
-        await preloadAll(state);
+        if (meta && meta.requiresPreload) {
+            await preloadAll(state);
+        }
         renderFromCache(state, currentLeadHours);
     }
 });

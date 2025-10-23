@@ -75,6 +75,41 @@ export function combineWindBytesToImage(uwind, vwind) {
     return { data: out, width, height };
 }
 
+export function computeWindSpeedFromUVBytes(uwind, vwind, uMin, uMax, vMin, vMax) {
+    const width = uwind.width;
+    const height = uwind.height;
+    if (!uwind || !vwind || width !== vwind.width || height !== vwind.height) {
+        throw new Error('U/V wind tiles must be defined and have matching dimensions');
+    }
+    if (!(uwind.data instanceof Uint8Array) || !(vwind.data instanceof Uint8Array)) {
+        throw new Error('Expected uint8 wind inputs');
+    }
+
+    const uBytes = uwind.data;
+    const vBytes = vwind.data;
+    const expected = width * height;
+    const out = new Float32Array(expected);
+
+    const uSpan = uMax - uMin;
+    const vSpan = vMax - vMin;
+
+    for (let i = 0; i < expected; i++) {
+        const u = uMin + (uBytes[i] / 255) * uSpan;
+        const v = vMin + (vBytes[i] / 255) * vSpan;
+        out[i] = Math.hypot(u, v);
+    }
+
+    return { data: out, width, height };
+}
+
+export function createCategoricalPalette(absenceColor, presenceColor) {
+    // Returns [[value, color], ...] pairs compatible with RasterLayer palette API
+    return [
+        [0, absenceColor],
+        [1, presenceColor]
+    ];
+}
+
 export async function fetchInitTimeRange() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);

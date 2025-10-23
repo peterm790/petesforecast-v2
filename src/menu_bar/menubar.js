@@ -121,9 +121,10 @@ export class MenuBar {
         toggle.style.display = 'none';
         document.addEventListener('keydown', this._handleEsc);
 
-        // Ensure initial state is valid given available colormaps
-        this._ensureValidColormapState();
+        // Ensure initial state is valid and apply per-variable defaults
         this._ensureValidVariableState();
+        this._applyVariableColormapDefaults();
+        this._ensureValidColormapState();
         this._ensureValidDataRange();
         this._populateGenreSelect();
         this._populateColormapSelect();
@@ -144,13 +145,18 @@ export class MenuBar {
     getState() { return { ...this.state }; }
 
     setState(partial) {
+        const prev = this.state;
         this.state = { ...this.state, ...partial };
-        this._notify();
+        const changedKeys = Object.keys(partial);
+        const requiresPreload = changedKeys.some(k => k === 'variable' || k === 'frequency' || k === 'initData');
+        // Always refresh local UI for immediate feedback
         this._refreshUI();
+        // Notify consumer with metadata so it can decide whether to preload
+        this._notify({ changedKeys, requiresPreload });
     }
 
-    _notify() {
-        if (this.onChange) this.onChange(this.getState());
+    _notify(meta = undefined) {
+        if (this.onChange) this.onChange(this.getState(), meta);
     }
 
     _handleEsc(e) {
@@ -259,7 +265,7 @@ export class MenuBar {
             ['24h', '24 Hours'],
             ['3d', '3 Days'],
             ['5d', '5 Days'],
-            ['16d-3h', '16 Days (3 Hourly)']
+            //['16d-3h', '16 Days (3 Hourly)']
         ];
         for (const [value, text] of opts) {
             const opt = document.createElement('option');
@@ -279,7 +285,14 @@ export class MenuBar {
         select.className = 'pf-menubar-select';
         this.variableSelect = select;
         select.addEventListener('change', () => {
-            this.setState({ variable: select.value, dataMin: undefined, dataMax: undefined });
+            const v = select.value;
+            const def = weatherVariables[v] || {};
+            const newGenre = def.cmapGenre || this.state.colormapGenre;
+            const newMap = def.cmapName || this.state.colormap;
+            this.setState({ variable: v, dataMin: undefined, dataMax: undefined, colormapGenre: newGenre, colormap: newMap });
+            this._ensureValidColormapState();
+            this._populateGenreSelect();
+            this._populateColormapSelect();
             this._ensureValidDataRange();
             this._populateRangeSliders();
         });
@@ -474,7 +487,15 @@ export class MenuBar {
     }
 
     _getVariables() {
-        return Object.keys(weatherVariables || {}).sort();
+		const hidden = new Set([
+			'wind_u_10m',
+			'wind_v_10m',
+			'wind_u_100m',
+			'wind_v_100m',
+			'wind_vector_10m',
+			'wind_vector_100m'
+		]);
+		return Object.keys(weatherVariables || {}).filter(v => !hidden.has(v)).sort();
     }
 
     _ensureValidColormapState() {
@@ -492,6 +513,13 @@ export class MenuBar {
         if (!names.includes(this.state.colormap)) {
             this.state.colormap = names[0];
         }
+    }
+
+    _applyVariableColormapDefaults() {
+        const def = weatherVariables[this.state.variable];
+        if (!def) return;
+        if (def.cmapGenre) this.state.colormapGenre = def.cmapGenre;
+        if (def.cmapName) this.state.colormap = def.cmapName;
     }
 
     _refreshUI() {
