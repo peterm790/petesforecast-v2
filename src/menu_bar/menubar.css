@@ -37,3 +37,8 @@ body .maplibregl-canvas{pointer-events:auto}
 .pf-menubar-open{width:clamp(28px,3vh,36px);height:clamp(28px,3vh,36px);border-radius:9999px;border:1px solid rgba(255,255,255,.35);background:linear-gradient(135deg,rgba(255,149,0,.9),rgba(255,64,129,.9));color:#fff;backdrop-filter:blur(8px);box-shadow:0 8px 18px rgba(0,0,0,.28);cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700;transition:transform .15s ease,box-shadow .15s ease}
 .pf-menubar-open:hover{transform:scale(1.05);box-shadow:0 10px 22px rgba(0,0,0,.36)}
 
+
+/* Legend host containers */
+.pf-menubar-legend-host{margin-top:clamp(8px,1.2vh,12px)}
+.pf-menubar-legend-closed-host{display:block}
+.pf-menubar-legend-open-host{display:block}

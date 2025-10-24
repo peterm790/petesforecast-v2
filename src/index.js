@@ -10,19 +10,21 @@ import '@time_slider/timeslider.css';
 import { LoadingOverlay } from './loading_overlay/loading.js';
 import './loading_overlay/loading.css';
 import { DataCache } from './data/cache.js';
-import NPY from 'npyjs';
-import { MapboxOverlay } from '@deck.gl/mapbox';
-import { RasterLayer, ParticleLayer, TooltipControl, DirectionFormat, Placement } from 'weatherlayers-gl';
-import { ClipExtension } from '@deck.gl/extensions';
 import weatherVariables from './assets/weather_variables.json';
-
-const [firstStr, latestStr] = await fetchInitTimeRange();
-const sixHourlyDates = generateInitTimes6h(firstStr, latestStr);
-const latestISO = parseInitTimeToDate(latestStr).toISOString().replace('.000Z', 'Z');
+import { createLegendManager } from './controls/legend.js';
+import { createTooltipManager } from './controls/tooltip.js';
 
 function toIsoZ(d) { return d.toISOString().replace('.000Z', 'Z'); }
-const INIT_ISOS_ASC = sixHourlyDates.map(toIsoZ);
+let INIT_ISOS_ASC = null;
+let latestISO = null;
+async function loadInitRange() {
+    const [firstStr, latestStr] = await fetchInitTimeRange();
+    const sixHourlyDates = generateInitTimes6h(firstStr, latestStr);
+    INIT_ISOS_ASC = sixHourlyDates.map(toIsoZ);
+    latestISO = parseInitTimeToDate(latestStr).toISOString().replace('.000Z', 'Z');
+}
 function getInitIndexFromState(state) {
+    if (!INIT_ISOS_ASC) throw new Error('Init times not loaded');
     const iso = state.initData;
     const idx = INIT_ISOS_ASC.indexOf(iso);
     if (idx === -1) throw new Error(`Unknown init: ${iso}`);
@@ -40,44 +42,55 @@ const map = new maplibregl.Map({
     maxZoom: 15
 });
 
-// deck.gl overlay interleaved with MapLibre
-const deckOverlay = new MapboxOverlay({
-    interleaved: true,
-    layers: []
-});
-map.addControl(deckOverlay);
-
-// WeatherLayers tooltip (click-to-pin)
-let tooltipControl = null;
-let tooltipPinned = false;
-let lastPickedLngLat = null; // [lng, lat]
-function attachTooltipControlIfNeeded() {
-    if (tooltipControl) return;
-    // Try to attach to Deck canvas parent for proper positioning
-    const deckInstance = /** @type {any} */(deckOverlay)._deck;
-    if (deckInstance && deckInstance.getCanvas && deckInstance.getCanvas()) {
-        tooltipControl = new TooltipControl({
-            unitFormat: { unit: '' },
-            directionFormat: DirectionFormat.VALUE,
-            followCursor: true,
-            followCursorOffset: 12,
-            followCursorPlacement: Placement.TOP
-        });
-        tooltipControl.addTo(deckInstance.getCanvas().parentElement);
-        // Initialize with current variable's unit
-        try { updateTooltipUnitFormat((() => menu && menu.getState ? menu.getState().variable : 'wind_speed_10m')()); } catch {}
-    }
+// deck.gl overlay (lazy); created on first render
+let deckOverlay = null;
+async function ensureDeckOverlay() {
+    if (deckOverlay) return deckOverlay;
+    const mod = await import('@deck.gl/mapbox');
+    const MapboxOverlay = mod.MapboxOverlay;
+    deckOverlay = new MapboxOverlay({ interleaved: true, layers: [] });
+    map.addControl(deckOverlay);
+    return deckOverlay;
 }
 
+let deckLayerMods = null;
+async function ensureLayerModules() {
+    if (deckLayerMods) return deckLayerMods;
+    const [wl, ext] = await Promise.all([
+        import('weatherlayers-gl'),
+        import('@deck.gl/extensions')
+    ]);
+    deckLayerMods = {
+        RasterLayer: wl.RasterLayer,
+        ParticleLayer: wl.ParticleLayer,
+        ClipExtension: ext.ClipExtension
+    };
+    return deckLayerMods;
+}
+
+// Tooltip state (click-to-pin)
+let tooltipPinned = false;
+let lastPickedLngLat = null; // [lng, lat]
+let currentLegendHost = null; // kept for compatibility with selected line ref
+// Sampling state (declare early to avoid TDZ when used inside renderFromCache)
+let lastRasterImage = null; // { data: Float32Array, width, height }
+let lastUWind = null; // { data: Uint8Array, width, height }
+let lastVWind = null; // { data: Uint8Array, width, height }
+let lastUMin = 0, lastUMax = 0, lastVMin = 0, lastVMax = 0;
+
+function isMenuOpen() {
+    const wrap = document.querySelector('.pf-menubar-wrap');
+    // open when wrap not hidden
+    return !!(wrap && !wrap.classList.contains('hidden'));
+}
+
+const legendManager = createLegendManager({ isMenuOpen });
+const tooltipManager = createTooltipManager({ getDeckOverlay: () => deckOverlay });
+
 function updateTooltipUnitFormat(variableKey) {
-    if (!tooltipControl) return;
     const def = weatherVariables[variableKey] || {};
     const unit = typeof def.unit === 'string' ? def.unit : '';
-    // Keep existing config, just update unit
-    try {
-        const cfg = tooltipControl.getConfig ? tooltipControl.getConfig() : { directionFormat: DirectionFormat.VALUE, followCursor: false };
-        tooltipControl.setConfig({ ...cfg, unitFormat: { unit } });
-    } catch {}
+    try { tooltipManager.updateUnit(unit); } catch {}
 }
 
 async function fetchData(url, signal) {
@@ -86,11 +99,24 @@ async function fetchData(url, signal) {
         throw new Error(`Request failed with ${response.status} ${response.statusText}`);
     }
     const arrayBuffer = await response.arrayBuffer();
+    const { default: NPY } = await import('npyjs');
     const npy = new NPY();
     const { data: flat, shape } = await npy.load(arrayBuffer);
 
-    const height = shape[1];
-    const width = shape[2];
+    if (!Array.isArray(shape)) {
+        throw new Error(`Invalid shape from API: ${JSON.stringify(shape)}`);
+    }
+    let width, height;
+    if (shape.length === 2) {
+        height = shape[0];
+        width = shape[1];
+    } else if (shape.length === 3 && shape[0] === 1) {
+        // Squeeze leading singleton dimension to 2D
+        height = shape[1];
+        width = shape[2];
+    } else {
+        throw new Error(`Expected 2D array from API, got shape=${JSON.stringify(shape)}`);
+    }
     const planeSize = width * height;
 
     return { data: flat.subarray(0, planeSize), width, height };
@@ -105,7 +131,7 @@ function buildRasterUrl(variableKey, lead, initIndex) {
     const physMin = typeof def.physMin === 'number' ? def.physMin : def.min;
     const physMax = typeof def.physMax === 'number' ? def.physMax : def.max;
     const [minLon, minLat, maxLon, maxLat] = bounds;
-    return `${API_BASE}/bbox/${minLon},${minLat},${maxLon},${maxLat}.npy?url=https%3A%2F%2Fdata.dynamical.org%2Fnoaa%2Fgfs%2Fforecast%2Flatest.zarr&variable=${encodeURIComponent(variableKey)}&isel=init_time%3D${encodeURIComponent(initIndex)}&isel=lead_time%3D${encodeURIComponent(lead)}&decode_times=true&npy_uint8=true&rescale=${encodeURIComponent(physMin)},${encodeURIComponent(physMax)}`;
+    return `${API_BASE}/bbox/${minLon},${minLat},${maxLon},${maxLat}.npy?url=https%3A%2F%2Fdata.dynamical.org%2Fnoaa%2Fgfs%2Fforecast%2Flatest.zarr&variable=${encodeURIComponent(variableKey)}&isel=init_time%3D${encodeURIComponent(initIndex)}&isel=lead_time%3D${encodeURIComponent(lead)}&decode_times=true&npy_uint8=true&rescale=${encodeURIComponent(physMin)},${encodeURIComponent(physMax)}&return_mask=false`;
 }
 
 function buildWindUrl(varKey, lead, initIndex) {
@@ -114,7 +140,7 @@ function buildWindUrl(varKey, lead, initIndex) {
     const physMin = typeof def.physMin === 'number' ? def.physMin : def.min;
     const physMax = typeof def.physMax === 'number' ? def.physMax : def.max;
     const [minLon, minLat, maxLon, maxLat] = bounds;
-    return `${API_BASE}/bbox/${minLon},${minLat},${maxLon},${maxLat}.npy?url=https%3A%2F%2Fdata.dynamical.org%2Fnoaa%2Fgfs%2Fforecast%2Flatest.zarr&variable=${encodeURIComponent(varKey)}&isel=init_time%3D${encodeURIComponent(initIndex)}&isel=lead_time%3D${encodeURIComponent(lead)}&decode_times=true&npy_uint8=true&rescale=${encodeURIComponent(physMin)},${encodeURIComponent(physMax)}`;
+    return `${API_BASE}/bbox/${minLon},${minLat},${maxLon},${maxLat}.npy?url=https%3A%2F%2Fdata.dynamical.org%2Fnoaa%2Fgfs%2Fforecast%2Flatest.zarr&variable=${encodeURIComponent(varKey)}&isel=init_time%3D${encodeURIComponent(initIndex)}&isel=lead_time%3D${encodeURIComponent(lead)}&decode_times=true&npy_uint8=true&rescale=${encodeURIComponent(physMin)},${encodeURIComponent(physMax)}&return_mask=false`;
 }
 
 function leadsForFrequency(freq) {
@@ -171,6 +197,9 @@ async function renderFromCache(state, leadHours) {
         rasterImage = { data: out, width: rasterData.width, height: rasterData.height };
     }
 
+    await ensureDeckOverlay();
+    const { RasterLayer, ParticleLayer, ClipExtension } = await ensureLayerModules();
+
     const raster = new RasterLayer({
         id: 'raster',
         image: rasterImage,
@@ -226,6 +255,14 @@ async function renderFromCache(state, leadHours) {
     // If tooltip is pinned, re-sample on render to reflect new time/frame
     if (tooltipPinned && lastPickedLngLat) {
         try { updateTooltipAtLngLat(lastPickedLngLat[0], lastPickedLngLat[1]); } catch (err) { console.error('Re-sample failed:', err); }
+    }
+
+    // Update legend control with latest palette and unit
+    try {
+        const unit = (def && typeof def.unit === 'string') ? def.unit : '';
+        await legendManager.updateConfig({ title: state.variable, unitFormat: { unit }, palette });
+    } catch (err) {
+        console.error('Legend update failed:', err);
     }
 }
 
@@ -340,13 +377,17 @@ timeSlider.mount(document.body);
 // Create the menu and wire it to the slider and rendering
 const menu = new MenuBar({
     initialState: {
-        initData: latestISO,
+        initData: '',
         frequency: '24h',
 			variable: 'wind_speed_10m',
         colormapGenre: 'cmocean',
         colormap: 'thermal'
     },
     onChange: async (state, meta) => {
+        if (!INIT_ISOS_ASC || !state.initData) {
+            // Defer any actions until init times are loaded and initData is set
+            return;
+        }
         timeSlider.setFromMenuState(state);
         if (meta && meta.requiresPreload) {
             await preloadAll(state);
@@ -356,16 +397,30 @@ const menu = new MenuBar({
 });
 menu.mount(document.body);
 
-// Initialize slider from current menu state, preload and render
+// Initialize slider from current menu state
 timeSlider.setFromMenuState(menu.getState());
-await preloadAll(menu.getState());
-renderFromCache(menu.getState(), currentLeadHours);
 
-// Sampling helpers for tooltip
-let lastRasterImage = null; // { data: Float32Array, width, height }
-let lastUWind = null; // { data: Uint8Array, width, height }
-let lastVWind = null; // { data: Uint8Array, width, height }
-let lastUMin = 0, lastUMax = 0, lastVMin = 0, lastVMax = 0;
+// After first paint, load init-time range and kick off first preload+render
+requestAnimationFrame(async () => {
+    try {
+        await loadInitRange();
+        menu.setState({ initData: latestISO });
+    } catch (err) {
+        console.error('Failed to load init-time range:', err);
+        throw err;
+    }
+});
+
+// Initialize legend placement and react to menu open/close
+legendManager.position();
+document.addEventListener('click', (ev) => {
+    const target = ev.target;
+    if (!(target instanceof Element)) return;
+    if (target.closest('.pf-menubar-open') || target.closest('.pf-menubar-close')) {
+        // Wait for menu to toggle then reposition
+        setTimeout(() => { legendManager.position(); }, 0);
+    }
+});
 
 function sampleIndexForLngLat(lng, lat, width, height) {
     const minLon = bounds[0], minLat = bounds[1], maxLon = bounds[2], maxLat = bounds[3];
@@ -395,14 +450,11 @@ function sampleDirectionAt(lng, lat) {
 }
 
 function updateTooltipAtLngLat(lng, lat) {
-    attachTooltipControlIfNeeded();
-    if (!tooltipControl) return;
     const value = sampleScalarAt(lng, lat);
     let direction = undefined;
     try { direction = sampleDirectionAt(lng, lat); } catch {}
     const pt = map.project([lng, lat]);
-    // Emulate a Deck pickingInfo at the click location so TooltipControl positions at that pixel
-    tooltipControl.updatePickingInfo({ x: pt.x, y: pt.y, raster: { value, ...(typeof direction === 'number' ? { direction } : {}) } });
+    tooltipManager.updateAtPixel(pt.x, pt.y, value, direction);
 }
 
 // Update tooltip position when map moves/zooms
@@ -430,7 +482,7 @@ window.addEventListener('keydown', (ev) => {
     if (ev.key === 'Escape') {
         tooltipPinned = false;
         lastPickedLngLat = null;
-        if (tooltipControl && tooltipControl.update) tooltipControl.update(undefined);
+        tooltipManager.clear();
     }
 });
 
