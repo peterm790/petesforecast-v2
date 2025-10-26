@@ -31,7 +31,7 @@ function getInitIndexFromState(state) {
     return idx; // earliest=0 ... latest=max
 }
 
-const bounds = [-180.125, -80.125, 179.875, 80.125];
+const bounds = [-180.125, -72.125, 179.875, 72.125];
 
 const map = new maplibregl.Map({
     container: 'map', // container id
@@ -93,7 +93,7 @@ function updateTooltipUnitFormat(variableKey) {
     try { tooltipManager.updateUnit(unit); } catch {}
 }
 
-async function fetchData(url, signal) {
+async function fetchFrames(url, signal) {
     const response = await fetch(url, { method: 'GET', signal });
     if (!response.ok) {
         throw new Error(`Request failed with ${response.status} ${response.statusText}`);
@@ -106,41 +106,53 @@ async function fetchData(url, signal) {
     if (!Array.isArray(shape)) {
         throw new Error(`Invalid shape from API: ${JSON.stringify(shape)}`);
     }
-    let width, height;
     if (shape.length === 2) {
-        height = shape[0];
-        width = shape[1];
-    } else if (shape.length === 3 && shape[0] === 1) {
-        // Squeeze leading singleton dimension to 2D
-        height = shape[1];
-        width = shape[2];
-    } else {
-        throw new Error(`Expected 2D array from API, got shape=${JSON.stringify(shape)}`);
+        const height = shape[0];
+        const width = shape[1];
+        const planeSize = width * height;
+        const frames = [ { data: flat.subarray(0, planeSize), width, height } ];
+        if (DEBUG_ORDER) console.log('[ORDER][RESP]', { shape, frames: frames.length, width, height });
+        return frames;
     }
-    const planeSize = width * height;
-
-    return { data: flat.subarray(0, planeSize), width, height };
+    if (shape.length === 3) {
+        const t = shape[0];
+        const height = shape[1];
+        const width = shape[2];
+        const planeSize = width * height;
+        const frames = [];
+        for (let i = 0; i < t; i++) {
+            const start = i * planeSize;
+            const end = start + planeSize;
+            frames.push({ data: flat.subarray(start, end), width, height });
+        }
+        if (DEBUG_ORDER) console.log('[ORDER][RESP]', { shape, frames: frames.length, width, height });
+        return frames;
+    }
+    throw new Error(`Unexpected array shape from API: ${JSON.stringify(shape)}`);
 }
 
 const API_BASE = 'https://api.onlineweatherrouting.com';
+// Tunable: number of lead_time slices per request
+const LEAD_CHUNK_SIZE = 12;
+// Debug switch for tracing lead/frame ordering
+const DEBUG_ORDER = true;
+if (typeof window !== 'undefined') {
+    try { window.DEBUG_ORDER = DEBUG_ORDER; } catch {}
+}
 //const API_BASE_ORIGINAL = 'https://iyb260zpcg.execute-api.us-west-2.amazonaws.com';
 
-function buildRasterUrl(variableKey, lead, initIndex) {
+function buildMultiUrl(variableKey, leads, initIndex) {
     const def = weatherVariables[variableKey];
     if (!def) throw new Error(`Unknown weather variable: ${variableKey}`);
     const physMin = typeof def.physMin === 'number' ? def.physMin : def.min;
     const physMax = typeof def.physMax === 'number' ? def.physMax : def.max;
     const [minLon, minLat, maxLon, maxLat] = bounds;
-    return `${API_BASE}/bbox/${minLon},${minLat},${maxLon},${maxLat}.npy?url=https%3A%2F%2Fdata.dynamical.org%2Fnoaa%2Fgfs%2Fforecast%2Flatest.zarr&variable=${encodeURIComponent(variableKey)}&isel=init_time%3D${encodeURIComponent(initIndex)}&isel=lead_time%3D${encodeURIComponent(lead)}&decode_times=true&npy_uint8=true&rescale=${encodeURIComponent(physMin)},${encodeURIComponent(physMax)}&return_mask=false`;
-}
-
-function buildWindUrl(varKey, lead, initIndex) {
-    const def = weatherVariables[varKey];
-    if (!def) throw new Error(`Unknown weather variable: ${varKey}`);
-    const physMin = typeof def.physMin === 'number' ? def.physMin : def.min;
-    const physMax = typeof def.physMax === 'number' ? def.physMax : def.max;
-    const [minLon, minLat, maxLon, maxLat] = bounds;
-    return `${API_BASE}/bbox/${minLon},${minLat},${maxLon},${maxLat}.npy?url=https%3A%2F%2Fdata.dynamical.org%2Fnoaa%2Fgfs%2Fforecast%2Flatest.zarr&variable=${encodeURIComponent(varKey)}&isel=init_time%3D${encodeURIComponent(initIndex)}&isel=lead_time%3D${encodeURIComponent(lead)}&decode_times=true&npy_uint8=true&rescale=${encodeURIComponent(physMin)},${encodeURIComponent(physMax)}&return_mask=false`;
+    let url = `${API_BASE}/bbox/${minLon},${minLat},${maxLon},${maxLat}.npy?url=https%3A%2F%2Fdata.dynamical.org%2Fnoaa%2Fgfs%2Fforecast%2Flatest.zarr&variable=${encodeURIComponent(variableKey)}&isel=init_time%3D${encodeURIComponent(initIndex)}&decode_times=true&npy_uint8=true&rescale=${encodeURIComponent(physMin)},${encodeURIComponent(physMax)}&return_mask=false`;
+    for (const lead of leads) {
+        url += `&isel=lead_time%3D${encodeURIComponent(lead)}`; // '%3D' is '='
+    }
+    if (DEBUG_ORDER) console.log('[ORDER][REQ]', { variableKey, initIndex, leads: leads.slice() });
+    return url;
 }
 
 function leadsForFrequency(freq) {
@@ -160,6 +172,7 @@ async function renderFromCache(state, leadHours) {
     let rasterData = dataCache.get(state.variable, leadHours, initKey);
     const uwind = dataCache.get('wind_u_10m', leadHours, initKey);
     const vwind = dataCache.get('wind_v_10m', leadHours, initKey);
+    if (DEBUG_ORDER) console.log('[ORDER][READ]', { initKey, variable: state.variable, leadHours, hasRaster: !!rasterData, hasU: !!uwind, hasV: !!vwind });
     // If wind speed is requested, compute from U and V instead of fetching from server
     if (state.variable === 'wind_speed_10m' && uwind && vwind) {
         const uDef = weatherVariables['wind_u_10m'];
@@ -226,10 +239,10 @@ async function renderFromCache(state, leadHours) {
             imageUnscale: [windMin, windMax],
             extensions: [new ClipExtension()],
             clipBounds: bounds,
-            numParticles: 5000,
+            numParticles: 5500,
             maxAge: 17,
             speedFactor: 8,
-            width: 0.5,
+            width: 0.6,
             color: [60, 70, 85],
             opacity: 0.6,
             animate: true
@@ -238,6 +251,7 @@ async function renderFromCache(state, leadHours) {
     }
 
     deckOverlay.setProps({ layers });
+    if (DEBUG_ORDER) console.log('[ORDER][RENDERED]', { renderedLead: leadHours, variable: state.variable });
 
     // Keep last-rendered data for value picking
     lastRasterImage = rasterImage;
@@ -324,17 +338,20 @@ async function preloadAll(state) {
     isCacheReady = false;
     try {
         // 1) Prime: ensure current lead for selected variable and winds are cached first
+        // Prime: fetch the 12-hour chunk that contains the current lead first
+        const allLeads = leads;
+        const idx = Math.max(0, allLeads.indexOf(currentLeadHours));
+        const chunkStart = Math.max(0, Math.floor(idx / LEAD_CHUNK_SIZE) * LEAD_CHUNK_SIZE);
+        const leadsPrime = allLeads.slice(chunkStart, chunkStart + LEAD_CHUNK_SIZE);
+        if (DEBUG_ORDER) console.log('[ORDER][PRIME]', { currentLeadHours, initKey, leadsPrime });
         await dataCache.preload({
             variables: variablesAll,
             initKey,
-            leads: [currentLeadHours],
-            buildUrl: (variable, lead) => (
-                (variable === 'wind_u_10m' || variable === 'wind_v_10m')
-                    ? buildWindUrl(variable, lead, initKey)
-                    : buildRasterUrl(variable, lead, initKey)
-            ),
-            fetchData: (url) => fetchData(url),
-            onProgress: () => {}
+            leads: leadsPrime,
+            buildUrl: (variable, leadsChunk) => buildMultiUrl(variable, leadsChunk, initKey),
+            fetchData: (url) => fetchFrames(url),
+            onProgress: () => {},
+            chunkSize: LEAD_CHUNK_SIZE
         });
         // Render immediately after prime
         if (myToken === preloadToken) {
@@ -346,13 +363,10 @@ async function preloadAll(state) {
             variables: variablesAll,
             initKey,
             leads,
-            buildUrl: (variable, lead) => (
-                (variable === 'wind_u_10m' || variable === 'wind_v_10m')
-                    ? buildWindUrl(variable, lead, initKey)
-                    : buildRasterUrl(variable, lead, initKey)
-            ),
-            fetchData: (url) => fetchData(url),
-            onProgress: () => {}
+            buildUrl: (variable, leadsChunk) => buildMultiUrl(variable, leadsChunk, initKey),
+            fetchData: (url) => fetchFrames(url),
+            onProgress: () => {},
+            chunkSize: LEAD_CHUNK_SIZE
         });
         isCacheReady = true;
     } catch (err) {
@@ -370,7 +384,11 @@ async function preloadAll(state) {
 
 // Time slider UI
 const timeSlider = new TimeSlider({
-    onChange: (leadHours) => { currentLeadHours = leadHours; if (isCacheReady) renderFromCache(menu.getState(), leadHours); }
+    onChange: (leadHours) => {
+        if (DEBUG_ORDER) console.log('[ORDER][SLIDER]', { requestedLead: leadHours });
+        currentLeadHours = leadHours;
+        if (isCacheReady) renderFromCache(menu.getState(), leadHours);
+    }
 });
 timeSlider.mount(document.body);
 
