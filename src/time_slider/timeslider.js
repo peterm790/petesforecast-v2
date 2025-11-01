@@ -44,6 +44,7 @@ export class TimeSlider {
         this.availableHours = hoursForFrequency('3d');
         this.currentIndex = 0;
         this.initTime = null; // Date in UTC
+        this._lastActive = null;
     }
 
     mount(target) {
@@ -82,10 +83,58 @@ export class TimeSlider {
             this.currentIndex = Number(input.value);
             this._updateLabel();
             this._emitHours();
+            this._markLastActive('slider');
         });
 
+        // Tap/click track to jump to nearest step
+        const setIndexFromClientX = (clientX) => {
+            const rect = this.slider.getBoundingClientRect();
+            const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+            const maxIndex = Math.max(0, this.availableHours.length - 1);
+            const idx = Math.round(ratio * maxIndex);
+            this._setIndex(idx);
+        };
+
+        input.addEventListener('pointerdown', (e) => {
+            if (this.slider.disabled) return;
+            if (typeof e.clientX === 'number') setIndexFromClientX(e.clientX);
+            this._markLastActive('slider');
+        });
+
+        input.addEventListener('click', (e) => {
+            if (this.slider.disabled) return;
+            if (typeof e.clientX === 'number') setIndexFromClientX(e.clientX);
+            this._markLastActive('slider');
+        });
+
+        // Step buttons
+        const prevBtn = document.createElement('button');
+        prevBtn.className = 'pf-timeslider-step pf-prev';
+        prevBtn.type = 'button';
+        prevBtn.setAttribute('aria-label', 'Previous time step');
+        prevBtn.textContent = '<';
+        prevBtn.addEventListener('click', () => {
+            if (this.slider?.disabled) return;
+            this.stepBy(-1);
+            this._markLastActive('slider');
+        });
+
+        const nextBtn = document.createElement('button');
+        nextBtn.className = 'pf-timeslider-step pf-next';
+        nextBtn.type = 'button';
+        nextBtn.setAttribute('aria-label', 'Next time step');
+        nextBtn.textContent = '>';
+        nextBtn.addEventListener('click', () => {
+            if (this.slider?.disabled) return;
+            this.stepBy(+1);
+            this._markLastActive('slider');
+        });
+
+        // Row order: min | prev | slider | next | max
         row.appendChild(minLabel);
+        row.appendChild(prevBtn);
         row.appendChild(input);
+        row.appendChild(nextBtn);
         row.appendChild(maxLabel);
 
         wrap.appendChild(label);
@@ -98,6 +147,29 @@ export class TimeSlider {
         this.slider = input;
         this.minLabel = minLabel;
         this.maxLabel = maxLabel;
+        this.prevBtn = prevBtn;
+        this.nextBtn = nextBtn;
+
+        // Global keyboard handling: ArrowLeft/ArrowRight when slider was last active
+        const onKeyDown = (e) => {
+            if (this.slider?.disabled) return;
+            const ae = document.activeElement;
+            const typing = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable);
+            if (typing) return;
+            if (this._lastActive !== 'slider') return;
+            if (e.key === 'ArrowLeft') { e.preventDefault(); this.stepBy(-1); }
+            if (e.key === 'ArrowRight') { e.preventDefault(); this.stepBy(+1); }
+        };
+        window.addEventListener('keydown', onKeyDown);
+        this._offKeyDown = () => window.removeEventListener('keydown', onKeyDown);
+
+        // Detect map interactions to suppress global keys when map is last selected
+        const mapEl = document.getElementById('map');
+        if (mapEl) {
+            const onMapPointer = () => this._markLastActive('map');
+            mapEl.addEventListener('pointerdown', onMapPointer);
+            this._offMapPointer = () => mapEl.removeEventListener('pointerdown', onMapPointer);
+        }
 
         this._refreshBounds();
         this._updateLabel();
@@ -111,6 +183,10 @@ export class TimeSlider {
         this.slider = null;
         this.minLabel = null;
         this.maxLabel = null;
+        this.prevBtn = null;
+        this.nextBtn = null;
+        if (this._offKeyDown) this._offKeyDown();
+        if (this._offMapPointer) this._offMapPointer();
     }
 
     destroy() { this.unmount(); }
@@ -177,6 +253,23 @@ export class TimeSlider {
         }
         const ts = new Date(this.initTime.getTime() + leadHours * 60 * 60 * 1000);
         this.label.textContent = `${formatLocal(ts)} (Lead ${leadHours}h)`;
+    }
+
+    _setIndex(idx) {
+        const maxIndex = Math.max(0, this.availableHours.length - 1);
+        const clamped = Math.min(maxIndex, Math.max(0, idx));
+        this.currentIndex = clamped;
+        if (this.slider) this.slider.value = String(clamped);
+        this._updateLabel();
+        this._emitHours();
+    }
+
+    stepBy(delta) {
+        this._setIndex(this.currentIndex + delta);
+    }
+
+    _markLastActive(source) {
+        this._lastActive = source;
     }
 }
 
