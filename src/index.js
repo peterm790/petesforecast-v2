@@ -13,6 +13,27 @@ import { DataCache } from './data/cache.js';
 import weatherVariables from './assets/weather_variables.json';
 import { createLegendManager } from './controls/legend.js';
 import { createTooltipManager } from './controls/tooltip.js';
+// Unit conversion helpers (affine y = a*x + b) derived from weather_variables.json per variable
+function getUnitConv(def, unit) {
+    if (!def) throw new Error('Missing variable definition');
+    const native = def.unit;
+    const chosen = unit || def.defaultUnit || native;
+    if (!chosen || chosen === native) {
+        return { fromNative: { a: 1, b: 0 }, toNative: { a: 1, b: 0 }, unit: native };
+    }
+    if (!def.convert || !def.convert[chosen]) {
+        throw new Error(`Unsupported unit ${chosen} for ${def.commonName || 'variable'}`);
+    }
+    const conv = def.convert[chosen];
+    return { fromNative: conv.fromNative || { a: 1, b: 0 }, toNative: conv.toNative || { a: 1, b: 0 }, unit: chosen };
+}
+
+function convertValue(a, b, x) { return a * x + b; }
+function convertAffineArrayFloat32(src, a, b) {
+    const out = new Float32Array(src.length);
+    for (let i = 0; i < src.length; i++) out[i] = a * src[i] + b;
+    return out;
+}
 
 function toIsoZ(d) { return d.toISOString().replace('.000Z', 'Z'); }
 let INIT_ISOS_ASC = null;
@@ -87,9 +108,8 @@ function isMenuOpen() {
 const legendManager = createLegendManager({ isMenuOpen });
 const tooltipManager = createTooltipManager({ getDeckOverlay: () => deckOverlay });
 
-function updateTooltipUnitFormat(variableKey) {
-    const def = weatherVariables[variableKey] || {};
-    const unit = typeof def.unit === 'string' ? def.unit : '';
+function updateTooltipUnitFormat(unitString) {
+    const unit = typeof unitString === 'string' ? unitString : '';
     try { tooltipManager.updateUnit(unit); } catch {}
 }
 
@@ -220,7 +240,7 @@ async function renderFromCache(state, leadHours) {
         vectorWind = combineWindBytesToImage(uwind, vwind);
     }
 
-    // Convert Uint8 raster to Float32 physical values before passing to the layer
+    // Convert Uint8 raster to Float32 physical values before passing to the layer (native units)
     let rasterImage = rasterData;
     if (rasterData && rasterData.data instanceof Uint8Array && rasterData.data.length === rasterData.width * rasterData.height) {
         const src = rasterData.data;
@@ -235,14 +255,22 @@ async function renderFromCache(state, leadHours) {
         rasterImage = { data: out, width: rasterData.width, height: rasterData.height };
     }
 
+    // If wind speed is derived above (Float32), it is in native m/s already.
+
+    // Convert from native units to selected unit for display and interactions
+    const { fromNative } = getUnitConv(def, state.unit);
+    if (rasterImage && rasterImage.data instanceof Float32Array) {
+        rasterImage = { data: convertAffineArrayFloat32(rasterImage.data, fromNative.a, fromNative.b), width: rasterImage.width, height: rasterImage.height };
+    }
+
     await ensureDeckOverlay();
     const { RasterLayer, ParticleLayer, ClipExtension } = await ensureLayerModules();
 
     const raster = new RasterLayer({
         id: 'raster',
         image: rasterImage,
-        imageMinValue: (typeof def.physMin === 'number' ? def.physMin : def.min),
-        imageMaxValue: (typeof def.physMax === 'number' ? def.physMax : def.max),
+        imageMinValue: convertValue(fromNative.a, fromNative.b, (typeof def.physMin === 'number' ? def.physMin : def.min)),
+        imageMaxValue: convertValue(fromNative.a, fromNative.b, (typeof def.physMax === 'number' ? def.physMax : def.max)),
         bounds: bounds,
         palette: palette,
         extensions: [new ClipExtension()],
@@ -298,7 +326,7 @@ async function renderFromCache(state, leadHours) {
 
     // Update legend control with latest palette and unit
     try {
-        const unit = (def && typeof def.unit === 'string') ? def.unit : '';
+        const unit = (typeof state.unit === 'string') ? state.unit : (def && typeof def.unit === 'string' ? def.unit : '');
         await legendManager.updateConfig({ title: state.variable, unitFormat: { unit }, palette });
     } catch (err) {
         console.error('Legend update failed:', err);
@@ -510,7 +538,7 @@ map.on('move', () => {
 // Click-to-pin tooltip
 map.on('click', (e) => {
     try {
-        updateTooltipUnitFormat(menu.getState().variable);
+        updateTooltipUnitFormat(menu.getState().unit);
         updateTooltipAtLngLat(e.lngLat.lng, e.lngLat.lat);
         tooltipPinned = true;
         lastPickedLngLat = [e.lngLat.lng, e.lngLat.lat];

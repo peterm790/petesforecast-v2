@@ -45,7 +45,8 @@ export class MenuBar {
             frequency: initialState.frequency || 'long-term',
             variable: initialState.variable || 'temperature',
             colormapGenre: initialState.colormapGenre || 'sequential',
-            colormap: initialState.colormap || 'thermal'
+            colormap: initialState.colormap || 'thermal',
+            unit: initialState.unit || null
         };
 
         this.root = null;
@@ -53,6 +54,7 @@ export class MenuBar {
         this.wrap = null;
         this.genreSelect = null;
         this.colormapSelect = null;
+        this.unitSelect = null;
         this.minSlider = null;
         this.maxSlider = null;
         this.rangeTitle = null;
@@ -90,6 +92,7 @@ export class MenuBar {
         sidebar.appendChild(this._createFrequencyPanel());
 
         sidebar.appendChild(this._createVariablePanel());
+        sidebar.appendChild(this._createUnitPanel());
 
         sidebar.appendChild(this._createGenrePanel());
         sidebar.appendChild(this._createColormapPanel());
@@ -125,10 +128,12 @@ export class MenuBar {
         this._ensureValidVariableState();
         this._applyVariableColormapDefaults();
         this._ensureValidColormapState();
+        this._applyVariableUnitDefault();
         this._ensureValidDataRange();
         this._populateGenreSelect();
         this._populateColormapSelect();
         this._populateVariableSelect();
+        this._populateUnitSelect();
         this._populateRangeSliders();
     }
 
@@ -289,10 +294,39 @@ export class MenuBar {
             const def = weatherVariables[v] || {};
             const newGenre = def.cmapGenre || this.state.colormapGenre;
             const newMap = def.cmapName || this.state.colormap;
-            this.setState({ variable: v, dataMin: undefined, dataMax: undefined, colormapGenre: newGenre, colormap: newMap });
+            // Reset unit to variable default on variable change
+            const nextUnit = (def && (def.defaultUnit || def.unit)) || this.state.unit || '';
+            this.setState({ variable: v, unit: nextUnit, dataMin: undefined, dataMax: undefined, colormapGenre: newGenre, colormap: newMap });
             this._ensureValidColormapState();
             this._populateGenreSelect();
             this._populateColormapSelect();
+            this._populateUnitSelect();
+            this._ensureValidDataRange();
+            this._populateRangeSliders();
+        });
+        panel.appendChild(select);
+        return panel;
+    }
+
+    _createUnitPanel() {
+        const { panel } = this._createPanelContainer('Unit');
+        const select = document.createElement('select');
+        select.className = 'pf-menubar-select';
+        this.unitSelect = select;
+        select.addEventListener('change', () => {
+            const def = weatherVariables[this.state.variable];
+            const prevUnit = this.state.unit || (def && (def.defaultUnit || def.unit));
+            const newUnit = select.value;
+            // Convert current dataMin/Max from prevUnit -> native -> newUnit
+            const { toNative: prevToNative } = this._getUnitConv(def, prevUnit);
+            const { fromNative: nextFromNative } = this._getUnitConv(def, newUnit);
+            const toNative = (x) => prevToNative.a * x + prevToNative.b;
+            const fromNative = (x) => nextFromNative.a * x + nextFromNative.b;
+            const nativeMin = toNative(typeof this.state.dataMin === 'number' ? this.state.dataMin : def.min);
+            const nativeMax = toNative(typeof this.state.dataMax === 'number' ? this.state.dataMax : def.max);
+            const newMin = fromNative(nativeMin);
+            const newMax = fromNative(nativeMax);
+            this.setState({ unit: newUnit, dataMin: newMin, dataMax: newMax });
             this._ensureValidDataRange();
             this._populateRangeSliders();
         });
@@ -448,8 +482,10 @@ export class MenuBar {
         if (!this.minSlider || !this.maxSlider) return;
         const def = weatherVariables[this.state.variable];
         if (!def) return;
-        const min = Number(def.min);
-        const max = Number(def.max);
+        // Convert native min/max to selected unit for UI sliders
+        const { fromNative } = this._getUnitConv(def, this.state.unit || def.unit);
+        const min = Number(fromNative.a * Number(def.min) + fromNative.b);
+        const max = Number(fromNative.a * Number(def.max) + fromNative.b);
         const step = (max - min) / 100 || 1;
         this.minSlider.min = String(min);
         this.minSlider.max = String(max);
@@ -538,8 +574,9 @@ export class MenuBar {
 
     _ensureValidDataRange() {
         const def = weatherVariables[this.state.variable];
-        const min = def ? def.min : 0;
-        const max = def ? def.max : 1;
+        const { fromNative } = def ? this._getUnitConv(def, this.state.unit || (def.defaultUnit || def.unit)) : { fromNative: { a: 1, b: 0 } };
+        const min = def ? (fromNative.a * def.min + fromNative.b) : 0;
+        const max = def ? (fromNative.a * def.max + fromNative.b) : 1;
         if (typeof this.state.dataMin !== 'number') this.state.dataMin = min;
         if (typeof this.state.dataMax !== 'number') this.state.dataMax = max;
         if (this.state.dataMin < min) this.state.dataMin = min;
@@ -549,8 +586,46 @@ export class MenuBar {
 
     _rangeTitleText() {
         const def = weatherVariables[this.state.variable];
-        const unit = def && def.unit ? ` (${def.unit})` : '';
+        const unitStr = (this.state.unit || (def && (def.defaultUnit || def.unit))) || '';
+        const unit = unitStr ? ` (${unitStr})` : '';
         return `${this.state.variable}${unit}`;
+    }
+
+    _applyVariableUnitDefault() {
+        const def = weatherVariables[this.state.variable];
+        if (!def) return;
+        const unit = this.state.unit || def.defaultUnit || def.unit || '';
+        this.state.unit = unit;
+    }
+
+    _populateUnitSelect() {
+        if (!this.unitSelect) return;
+        const def = weatherVariables[this.state.variable];
+        const units = (def && Array.isArray(def.units) && def.units.length > 0) ? def.units : [def && def.unit ? def.unit : ''];
+        this.unitSelect.innerHTML = '';
+        for (const u of units) {
+            const opt = document.createElement('option');
+            opt.value = u;
+            opt.textContent = u;
+            if (this.state.unit === u) opt.selected = true;
+            this.unitSelect.appendChild(opt);
+        }
+    }
+
+    _getUnitConv(def, unit) {
+        // Returns affine coeffs to convert from native to unit and unit to native
+        const nativeUnit = def && def.unit;
+        if (!def) throw new Error('No definition for variable');
+        if (!unit || unit === nativeUnit) {
+            return { fromNative: { a: 1, b: 0 }, toNative: { a: 1, b: 0 } };
+        }
+        if (!def.convert || !def.convert[unit]) {
+            throw new Error(`Unit ${unit} not supported for ${def.commonName || 'variable'}`);
+        }
+        const conv = def.convert[unit];
+        const fromNative = conv.fromNative || { a: 1, b: 0 };
+        const toNative = conv.toNative || { a: 1, b: 0 };
+        return { fromNative, toNative };
     }
 }
 

@@ -85,7 +85,14 @@
         "physMin": -90,
         "physMax": 60,
         "cmapGenre": "ukmo",
-        "cmapName": "main/temp-c"
+        "cmapName": "main/temp-c",
+        "defaultUnit": "C",
+        "units": ["C", "K", "F"],
+        "convert": {
+            "C": { "fromNative": { "a": 1, "b": 0 }, "toNative": { "a": 1, "b": 0 } },
+            "K": { "fromNative": { "a": 1, "b": 273.15 }, "toNative": { "a": 1, "b": -273.15 } },
+            "F": { "fromNative": { "a": 1.8, "b": 32 }, "toNative": { "a": 0.5555555555555556, "b": -17.77777777777778 } }
+        }
     },
     "minimum_temperature_2m": {
         "commonName": "Min temperature (2 m)",
@@ -96,7 +103,14 @@
         "physMin": -90,
         "physMax": 60,
         "cmapGenre": "ukmo",
-        "cmapName": "main/temp-c"
+        "cmapName": "main/temp-c",
+        "defaultUnit": "C",
+        "units": ["C", "K", "F"],
+        "convert": {
+            "C": { "fromNative": { "a": 1, "b": 0 }, "toNative": { "a": 1, "b": 0 } },
+            "K": { "fromNative": { "a": 1, "b": 273.15 }, "toNative": { "a": 1, "b": -273.15 } },
+            "F": { "fromNative": { "a": 1.8, "b": 32 }, "toNative": { "a": 0.5555555555555556, "b": -17.77777777777778 } }
+        }
     },
     "percent_frozen_precipitation_surface": {
         "commonName": "Frozen precipitation (%)",
@@ -140,7 +154,13 @@
         "physMin": 87000,
         "physMax": 108000,
         "cmapGenre": "ncl",
-        "cmapName": "BkBlAqGrYeOrReViWh200"
+        "cmapName": "BkBlAqGrYeOrReViWh200",
+        "defaultUnit": "kPa",
+        "units": ["kPa", "Pa"],
+        "convert": {
+            "Pa": { "fromNative": { "a": 1, "b": 0 }, "toNative": { "a": 1, "b": 0 } },
+            "kPa": { "fromNative": { "a": 0.001, "b": 0 }, "toNative": { "a": 1000, "b": 0 } }
+        }
     },
     "pressure_surface": {
         "commonName": "Surface pressure",
@@ -151,7 +171,13 @@
         "physMin": 30000,
         "physMax": 108000,
         "cmapGenre": "ncl",
-        "cmapName": "BkBlAqGrYeOrReViWh200"
+        "cmapName": "BkBlAqGrYeOrReViWh200",
+        "defaultUnit": "kPa",
+        "units": ["kPa", "Pa"],
+        "convert": {
+            "Pa": { "fromNative": { "a": 1, "b": 0 }, "toNative": { "a": 1, "b": 0 } },
+            "kPa": { "fromNative": { "a": 0.001, "b": 0 }, "toNative": { "a": 1000, "b": 0 } }
+        }
     },
     "relative_humidity_2m": {
         "commonName": "Relative humidity (2 m)",
@@ -173,7 +199,14 @@
         "physMin": -90,
         "physMax": 60,
         "cmapGenre": "ukmo",
-        "cmapName": "main/temp-c"
+        "cmapName": "main/temp-c",
+        "defaultUnit": "C",
+        "units": ["C", "K", "F"],
+        "convert": {
+            "C": { "fromNative": { "a": 1, "b": 0 }, "toNative": { "a": 1, "b": 0 } },
+            "K": { "fromNative": { "a": 1, "b": 273.15 }, "toNative": { "a": 1, "b": -273.15 } },
+            "F": { "fromNative": { "a": 1.8, "b": 32 }, "toNative": { "a": 0.5555555555555556, "b": -17.77777777777778 } }
+        }
     },
     "total_cloud_cover_atmosphere": {
         "commonName": "Total cloud cover",
@@ -191,11 +224,19 @@
         "unit": "m/s",
         "categorical": false,
         "min": 0,
-        "max": 50,
+        "max": 35,
         "physMin": 0,
         "physMax": 100,
         "cmapGenre": "ncl",
-        "cmapName": "wind_17lev"
+        "cmapName": "wind_17lev",
+        "defaultUnit": "kn",
+        "units": ["m/s", "kn", "km/h", "mph"],
+        "convert": {
+            "m/s": { "fromNative": { "a": 1, "b": 0 }, "toNative": { "a": 1, "b": 0 } },
+            "kn": { "fromNative": { "a": 1.9438444924406048, "b": 0 }, "toNative": { "a": 0.514444, "b": 0 } },
+            "km/h": { "fromNative": { "a": 3.6, "b": 0 }, "toNative": { "a": 0.2777777777777778, "b": 0 } },
+            "mph": { "fromNative": { "a": 2.2369362920544025, "b": 0 }, "toNative": { "a": 0.44704, "b": 0 } }
+        }
     },
     "wind_speed_100m": {
         "commonName": "Wind speed (100 m)",
@@ -206,7 +247,15 @@
         "physMin": 0,
         "physMax": 150,
         "cmapGenre": "ncl",
-        "cmapName": "wind_17lev"
+        "cmapName": "wind_17lev",
+        "defaultUnit": "kn",
+        "units": ["m/s", "kn", "km/h", "mph"],
+        "convert": {
+            "m/s": { "fromNative": { "a": 1, "b": 0 }, "toNative": { "a": 1, "b": 0 } },
+            "kn": { "fromNative": { "a": 1.9438444924406048, "b": 0 }, "toNative": { "a": 0.514444, "b": 0 } },
+            "km/h": { "fromNative": { "a": 3.6, "b": 0 }, "toNative": { "a": 0.2777777777777778, "b": 0 } },
+            "mph": { "fromNative": { "a": 2.2369362920544025, "b": 0 }, "toNative": { "a": 0.44704, "b": 0 } }
+        }
     },
     "wind_vector_10m": {
         "commonName": "Wind vector (10 m)",
