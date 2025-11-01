@@ -7,7 +7,7 @@ function hoursForFrequency(freq) {
     if (freq === '24h') return Array.from({ length: 24 }, (_, i) => i + 1);
     if (freq === '3d') return Array.from({ length: 72 }, (_, i) => i + 1);
     if (freq === '5d') return Array.from({ length: 120 }, (_, i) => i + 1);
-    //if (freq === '16d-3h') return Array.from({ length: 129 }, (_, i) => i * 3);
+    if (freq === '16d-3h') return Array.from({ length: 127 }, (_, i) => (i + 1) * 3); // 3..381
     throw new Error(`Unknown frequency: ${freq}`);
 }
 

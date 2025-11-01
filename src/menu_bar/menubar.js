@@ -265,7 +265,7 @@ export class MenuBar {
             ['24h', '24 Hours'],
             ['3d', '3 Days'],
             ['5d', '5 Days'],
-            //['16d-3h', '16 Days (3 Hourly)']
+            ['16d-3h', '16 Days (3 Hourly)']
         ];
         for (const [value, text] of opts) {
             const opt = document.createElement('option');

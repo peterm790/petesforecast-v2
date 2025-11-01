@@ -141,6 +141,30 @@ if (typeof window !== 'undefined') {
 }
 //const API_BASE_ORIGINAL = 'https://iyb260zpcg.execute-api.us-west-2.amazonaws.com';
 
+// Convert a forecast lead hour to the dataset's timestep index.
+// Rules: 0-120h are hourly mapped 1:1; >=123h are 3-hourly starting from index 122 → 123h.
+// Derived piecewise mapping:
+//  - hour ≤ 120 → index = hour
+//  - hour ≥ 123 and hour % 3 === 0 → index = 121 + (hour - 120) / 3
+// Hour 121/122 are not valid (no data); we raise errors to avoid silent fallbacks.
+function hourToTimestepIndex(hour) {
+    if (!Number.isInteger(hour) || hour < 0) {
+        throw new Error(`Invalid lead hour: ${hour}`);
+    }
+    // Max supported hour is 381 (index 208); 384 would imply index 209 which does not exist
+    if (hour > 381) {
+        throw new Error(`Lead hour ${hour} exceeds dataset range (max 381h)`);
+    }
+    if (hour <= 120) return hour;
+    if (hour < 123) {
+        throw new Error(`Lead hour ${hour} not available; expected 0-120 hourly or >=123 in 3-hour steps`);
+    }
+    if (hour % 3 !== 0) {
+        throw new Error(`Lead hour ${hour} not a 3-hour multiple in extended range`);
+    }
+    return 121 + Math.floor((hour - 120) / 3);
+}
+
 function buildMultiUrl(variableKey, leads, initIndex) {
     const def = weatherVariables[variableKey];
     if (!def) throw new Error(`Unknown weather variable: ${variableKey}`);
@@ -148,10 +172,11 @@ function buildMultiUrl(variableKey, leads, initIndex) {
     const physMax = typeof def.physMax === 'number' ? def.physMax : def.max;
     const [minLon, minLat, maxLon, maxLat] = bounds;
     let url = `${API_BASE}/bbox/${minLon},${minLat},${maxLon},${maxLat}.npy?url=https%3A%2F%2Fdata.dynamical.org%2Fnoaa%2Fgfs%2Fforecast%2Flatest.zarr&variable=${encodeURIComponent(variableKey)}&isel=init_time%3D${encodeURIComponent(initIndex)}&decode_times=true&npy_uint8=true&rescale=${encodeURIComponent(physMin)},${encodeURIComponent(physMax)}&return_mask=false`;
-    for (const lead of leads) {
-        url += `&isel=lead_time%3D${encodeURIComponent(lead)}`; // '%3D' is '='
+    for (const leadHour of leads) {
+        const tIndex = hourToTimestepIndex(leadHour);
+        url += `&isel=lead_time%3D${encodeURIComponent(tIndex)}`; // '%3D' is '='
     }
-    if (DEBUG_ORDER) console.log('[ORDER][REQ]', { variableKey, initIndex, leads: leads.slice() });
+    if (DEBUG_ORDER) console.log('[ORDER][REQ]', { variableKey, initIndex, leadHours: leads.slice() });
     return url;
 }
 
@@ -159,7 +184,7 @@ function leadsForFrequency(freq) {
     if (freq === '24h') return Array.from({ length: 24 }, (_, i) => i + 1);
     if (freq === '3d') return Array.from({ length: 72 }, (_, i) => i + 1);
     if (freq === '5d') return Array.from({ length: 120 }, (_, i) => i + 1);
-    //if (freq === '16d-3h') return Array.from({ length: 129 }, (_, i) => i * 3);
+    if (freq === '16d-3h') return Array.from({ length: 127 }, (_, i) => (i + 1) * 3); // 3..381
     throw new Error(`Unknown frequency: ${freq}`);
 }
 
