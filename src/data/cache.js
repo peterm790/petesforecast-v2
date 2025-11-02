@@ -41,9 +41,6 @@ export class DataCache {
                 const leadsChunk = missingLeads.slice(i, i + chunkSize);
                 if (leadsChunk.length === 0) continue;
                 const url = buildUrl(variable, leadsChunk);
-                if (typeof window !== 'undefined' && window.DEBUG_ORDER) {
-                    try { console.log('[ORDER][TASK]', { variable, initKey, leadsChunk: leadsChunk.slice() }); } catch {}
-                }
                 tasks.push({ variable, leads: leadsChunk, url, initKey });
             }
         }
@@ -88,21 +85,12 @@ export class DataCache {
             task = queue.shift();
             try {
                 const frames = await fetchData(task.url, signal);
-                if (typeof window !== 'undefined' && window.DEBUG_ORDER) {
-                    try { console.log('[ORDER][STORE_BEGIN]', { variable: task.variable, initKey: task.initKey, leads: task.leads.slice(), frames: frames.length }); } catch {}
-                }
                 const count = Math.min(frames.length, task.leads.length);
                 for (let i = 0; i < count; i++) {
                     const lead = task.leads[i];
                     const key = `${task.initKey}|${task.variable}|${lead}`;
                     this.cache.set(key, frames[i]);
-                    if (typeof window !== 'undefined' && window.DEBUG_ORDER) {
-                        try { console.log('[ORDER][MAP]', { mapIndex: i, lead, key }); } catch {}
-                    }
                     tick();
-                }
-                if (typeof window !== 'undefined' && window.DEBUG_ORDER) {
-                    try { console.log('[ORDER][STORE_END]', { variable: task.variable, initKey: task.initKey, stored: count, leads: task.leads.slice() }); } catch {}
                 }
             } catch (err) {
                 if (signal && signal.aborted) return;

@@ -58,7 +58,11 @@ export class MenuBar {
         this.minSlider = null;
         this.maxSlider = null;
         this.rangeTitle = null;
+        this.advancedOpen = false;
+        this.advancedSection = null;
+        this.advancedToggleBtn = null;
         this._handleEsc = this._handleEsc.bind(this);
+        this._handleGlobalClick = this._handleGlobalClick.bind(this);
     }
 
     mount(target) {
@@ -92,11 +96,36 @@ export class MenuBar {
         sidebar.appendChild(this._createFrequencyPanel());
 
         sidebar.appendChild(this._createVariablePanel());
-        sidebar.appendChild(this._createUnitPanel());
 
-        sidebar.appendChild(this._createGenrePanel());
-        sidebar.appendChild(this._createColormapPanel());
-        sidebar.appendChild(this._createRangePanel());
+        // Advanced toggle button
+        const advToggle = document.createElement('button');
+        advToggle.className = 'pf-menubar-select pf-menubar-more';
+        advToggle.textContent = 'More ▾';
+        advToggle.setAttribute('aria-label', 'Show more options');
+        advToggle.setAttribute('aria-expanded', 'false');
+        advToggle.setAttribute('aria-controls', 'pf-advanced-section');
+        advToggle.addEventListener('click', () => {
+            this.advancedOpen = !this.advancedOpen;
+            if (this.advancedSection) {
+                this.advancedSection.style.display = this.advancedOpen ? '' : 'none';
+            }
+            advToggle.textContent = this.advancedOpen ? 'Less ▴' : 'More ▾';
+            advToggle.setAttribute('aria-expanded', this.advancedOpen ? 'true' : 'false');
+            if (this.advancedOpen) {
+                // Ensure sliders redraw highlight when shown
+                try { this._populateRangeSliders(); } catch {}
+            }
+        });
+        this.advancedToggleBtn = advToggle;
+        sidebar.appendChild(advToggle);
+
+        // Advanced section container
+        const adv = this._createAdvancedSection();
+        adv.id = 'pf-advanced-section';
+        adv.className = 'pf-menubar-advanced';
+        adv.style.display = 'none';
+        this.advancedSection = adv;
+        sidebar.appendChild(adv);
 
         // Open button shows panel and hides itself
         toggle.addEventListener('click', () => {
@@ -123,6 +152,7 @@ export class MenuBar {
         // Start with menu open; hide external open button initially
         toggle.style.display = 'none';
         document.addEventListener('keydown', this._handleEsc);
+        document.addEventListener('click', this._handleGlobalClick, true);
 
         // Ensure initial state is valid and apply per-variable defaults
         this._ensureValidVariableState();
@@ -140,6 +170,7 @@ export class MenuBar {
     unmount() {
         if (!this.root) return;
         document.removeEventListener('keydown', this._handleEsc);
+        document.removeEventListener('click', this._handleGlobalClick, true);
         this.root.remove();
         this.root = null;
         this.sidebar = null;
@@ -166,6 +197,24 @@ export class MenuBar {
 
     _handleEsc(e) {
         if (e.key === 'Escape' && this.wrap) this.wrap.classList.add('hidden');
+    }
+
+    _handleGlobalClick(e) {
+        // On mobile, clicking outside the menubar should hide it
+        try {
+            const isMobile = (typeof window !== 'undefined') && (
+                window.matchMedia('(max-width: 768px)').matches ||
+                window.matchMedia('(pointer: coarse)').matches
+            );
+            if (!isMobile) return;
+            if (!this.root || !this.wrap) return;
+            const target = e.target;
+            if (!(target instanceof Element)) return;
+            if (target.closest('.pf-menubar-sidebar') || target.closest('.pf-menubar-open')) return;
+            this.wrap.classList.add('hidden');
+            const openBtn = this.root.querySelector('.pf-menubar-open');
+            if (openBtn) openBtn.style.display = '';
+        } catch {}
     }
 
     _createPanelContainer(titleText) {
@@ -376,51 +425,68 @@ export class MenuBar {
         const row = document.createElement('div');
         row.className = 'pf-menubar-range-row';
 
-        const minLabel = document.createElement('div');
-        minLabel.className = 'pf-menubar-range-min';
-        const maxLabel = document.createElement('div');
-        maxLabel.className = 'pf-menubar-range-max';
-
-        const wrap = document.createElement('div');
-        wrap.className = 'pf-menubar-range-wrap';
-        const highlight = document.createElement('div');
-        highlight.className = 'pf-menubar-range-highlight';
+        // Value labels removed; inputs themselves display values
         const minInput = document.createElement('input');
         const maxInput = document.createElement('input');
-        minInput.type = 'range';
-        maxInput.type = 'range';
-        minInput.className = 'pf-min';
-        maxInput.className = 'pf-max';
+        minInput.type = 'number';
+        maxInput.type = 'number';
+        minInput.className = 'pf-menubar-select pf-min';
+        maxInput.className = 'pf-menubar-select pf-max';
         this.minSlider = minInput;
         this.maxSlider = maxInput;
 
-        const updateLabels = () => {
-            minLabel.textContent = String(this.state.dataMin);
-            maxLabel.textContent = String(this.state.dataMax);
+        const updateTitle = () => {
             title.textContent = this._rangeTitleText();
         };
 
         minInput.addEventListener('input', () => {
             const minVal = Number(minInput.value);
             const maxVal = Number(this.maxSlider.value);
-            if (minVal > maxVal) this.maxSlider.value = String(minVal);
-            this.setState({ dataMin: Number(this.minSlider.value), dataMax: Number(this.maxSlider.value) });
-            updateLabels();
+            if (Number.isFinite(minVal) && Number.isFinite(maxVal)) {
+                const rmin = Math.round(minVal);
+                const rmax = Math.round(maxVal);
+                if (rmin > rmax) this.maxSlider.value = String(rmin);
+                this.setState({ dataMin: Math.round(Number(this.minSlider.value)), dataMax: Math.round(Number(this.maxSlider.value)) });
+                updateTitle();
+            }
         });
         maxInput.addEventListener('input', () => {
             const minVal = Number(this.minSlider.value);
             const maxVal = Number(maxInput.value);
-            if (maxVal < minVal) this.minSlider.value = String(maxVal);
-            this.setState({ dataMin: Number(this.minSlider.value), dataMax: Number(this.maxSlider.value) });
-            updateLabels();
+            if (Number.isFinite(minVal) && Number.isFinite(maxVal)) {
+                const rmin = Math.round(minVal);
+                const rmax = Math.round(maxVal);
+                if (rmax < rmin) this.minSlider.value = String(rmax);
+                this.setState({ dataMin: Math.round(Number(this.minSlider.value)), dataMax: Math.round(Number(this.maxSlider.value)) });
+                updateTitle();
+            }
         });
-
-        wrap.appendChild(highlight);
-        wrap.appendChild(minInput);
-        wrap.appendChild(maxInput);
-        row.appendChild(minLabel);
-        row.appendChild(wrap);
-        row.appendChild(maxLabel);
+        const roundInt = (n) => Number.isFinite(n) ? Math.round(n) : n;
+        const formatInt = (n) => (Number.isFinite(n) ? String(Math.round(n)) : String(n));
+        minInput.addEventListener('change', () => {
+            const minBound = Number(this.minSlider.min);
+            const maxBound = Number(this.maxSlider.max);
+            let minVal = Number(this.minSlider.value);
+            if (!Number.isFinite(minVal)) return;
+            minVal = Math.max(minBound, Math.min(minVal, Number(this.maxSlider.value)));
+            const r = roundInt(minVal);
+            this.minSlider.value = formatInt(r);
+            this.setState({ dataMin: r, dataMax: roundInt(Number(this.maxSlider.value)) });
+            updateTitle();
+        });
+        maxInput.addEventListener('change', () => {
+            const minBound = Number(this.minSlider.min);
+            const maxBound = Number(this.maxSlider.max);
+            let maxVal = Number(this.maxSlider.value);
+            if (!Number.isFinite(maxVal)) return;
+            maxVal = Math.min(maxBound, Math.max(maxVal, Number(this.minSlider.value)));
+            const r = roundInt(maxVal);
+            this.maxSlider.value = formatInt(r);
+            this.setState({ dataMin: roundInt(Number(this.minSlider.value)), dataMax: r });
+            updateTitle();
+        });
+        row.appendChild(minInput);
+        row.appendChild(maxInput);
         panel.appendChild(row);
         const close = document.createElement('button');
         close.className = 'pf-menubar-close';
@@ -432,22 +498,8 @@ export class MenuBar {
             if (openBtn) openBtn.style.display = '';
         });
         this.sidebar.appendChild(close);
-        const redrawHighlight = () => {
-            const min = Number(this.minSlider.min);
-            const max = Number(this.maxSlider.max);
-            const vmin = Number(this.minSlider.value);
-            const vmax = Number(this.maxSlider.value);
-            const span = max - min || 1;
-            const leftPct = ((vmin - min) / span) * 100;
-            const rightPct = 100 - ((vmax - min) / span) * 100;
-            highlight.style.left = leftPct + '%';
-            highlight.style.right = rightPct + '%';
-        };
-        const updateAndRedraw = () => { updateLabels(); redrawHighlight(); };
-        minInput.addEventListener('input', updateAndRedraw);
-        maxInput.addEventListener('input', updateAndRedraw);
-        // initial
-        setTimeout(redrawHighlight, 0);
+        // initial title
+        updateTitle();
 
         return panel;
     }
@@ -486,15 +538,15 @@ export class MenuBar {
         const { fromNative } = this._getUnitConv(def, this.state.unit || def.unit);
         const min = Number(fromNative.a * Number(def.min) + fromNative.b);
         const max = Number(fromNative.a * Number(def.max) + fromNative.b);
-        const step = (max - min) / 100 || 1;
+        const step = 1;
         this.minSlider.min = String(min);
         this.minSlider.max = String(max);
         this.minSlider.step = String(step);
         this.maxSlider.min = String(min);
         this.maxSlider.max = String(max);
         this.maxSlider.step = String(step);
-        this.minSlider.value = String(this.state.dataMin);
-        this.maxSlider.value = String(this.state.dataMax);
+        this.minSlider.value = String(Math.round(Number(this.state.dataMin)));
+        this.maxSlider.value = String(Math.round(Number(this.state.dataMax)));
         if (this.rangeTitle) this.rangeTitle.textContent = this._rangeTitleText();
         // redraw highlight after bounds/value change
         const evt = new Event('input');
@@ -626,6 +678,21 @@ export class MenuBar {
         const fromNative = conv.fromNative || { a: 1, b: 0 };
         const toNative = conv.toNative || { a: 1, b: 0 };
         return { fromNative, toNative };
+    }
+
+    _formatNumber(value) {
+        if (typeof value !== 'number' || !Number.isFinite(value)) return String(value);
+        return String(Number(value.toFixed(2)));
+    }
+
+    _createAdvancedSection() {
+        const container = document.createElement('div');
+        // Append advanced panels inside this container
+        container.appendChild(this._createUnitPanel());
+        container.appendChild(this._createGenrePanel());
+        container.appendChild(this._createColormapPanel());
+        container.appendChild(this._createRangePanel());
+        return container;
     }
 }
 

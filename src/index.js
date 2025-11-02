@@ -131,7 +131,6 @@ async function fetchFrames(url, signal) {
         const width = shape[1];
         const planeSize = width * height;
         const frames = [ { data: flat.subarray(0, planeSize), width, height } ];
-        if (DEBUG_ORDER) console.log('[ORDER][RESP]', { shape, frames: frames.length, width, height });
         return frames;
     }
     if (shape.length === 3) {
@@ -145,7 +144,6 @@ async function fetchFrames(url, signal) {
             const end = start + planeSize;
             frames.push({ data: flat.subarray(start, end), width, height });
         }
-        if (DEBUG_ORDER) console.log('[ORDER][RESP]', { shape, frames: frames.length, width, height });
         return frames;
     }
     throw new Error(`Unexpected array shape from API: ${JSON.stringify(shape)}`);
@@ -196,7 +194,6 @@ function buildMultiUrl(variableKey, leads, initIndex) {
         const tIndex = hourToTimestepIndex(leadHour);
         url += `&isel=lead_time%3D${encodeURIComponent(tIndex)}`; // '%3D' is '='
     }
-    if (DEBUG_ORDER) console.log('[ORDER][REQ]', { variableKey, initIndex, leadHours: leads.slice() });
     return url;
 }
 
@@ -217,7 +214,6 @@ async function renderFromCache(state, leadHours) {
     let rasterData = dataCache.get(state.variable, leadHours, initKey);
     const uwind = dataCache.get('wind_u_10m', leadHours, initKey);
     const vwind = dataCache.get('wind_v_10m', leadHours, initKey);
-    if (DEBUG_ORDER) console.log('[ORDER][READ]', { initKey, variable: state.variable, leadHours, hasRaster: !!rasterData, hasU: !!uwind, hasV: !!vwind });
     // If wind speed is requested, compute from U and V instead of fetching from server
     if (state.variable === 'wind_speed_10m' && uwind && vwind) {
         const uDef = weatherVariables['wind_u_10m'];
@@ -304,7 +300,6 @@ async function renderFromCache(state, leadHours) {
     }
 
     deckOverlay.setProps({ layers });
-    if (DEBUG_ORDER) console.log('[ORDER][RENDERED]', { renderedLead: leadHours, variable: state.variable });
 
     // Keep last-rendered data for value picking
     lastRasterImage = rasterImage;
@@ -396,7 +391,6 @@ async function preloadAll(state) {
         const idx = Math.max(0, allLeads.indexOf(currentLeadHours));
         const chunkStart = Math.max(0, Math.floor(idx / LEAD_CHUNK_SIZE) * LEAD_CHUNK_SIZE);
         const leadsPrime = allLeads.slice(chunkStart, chunkStart + LEAD_CHUNK_SIZE);
-        if (DEBUG_ORDER) console.log('[ORDER][PRIME]', { currentLeadHours, initKey, leadsPrime });
         await dataCache.preload({
             variables: variablesAll,
             initKey,
@@ -438,7 +432,6 @@ async function preloadAll(state) {
 // Time slider UI
 const timeSlider = new TimeSlider({
     onChange: (leadHours) => {
-        if (DEBUG_ORDER) console.log('[ORDER][SLIDER]', { requestedLead: leadHours });
         currentLeadHours = leadHours;
         if (isCacheReady) renderFromCache(menu.getState(), leadHours);
     }
