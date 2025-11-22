@@ -13,6 +13,8 @@ import { DataCache } from './data/cache.js';
 import weatherVariables from './assets/weather_variables.json';
 import { createLegendManager } from './controls/legend.js';
 import { createTooltipManager } from './controls/tooltip.js';
+import './index.css'; // Import global CSS for location dot
+
 // Unit conversion helpers (affine y = a*x + b) derived from weather_variables.json per variable
 function getUnitConv(def, unit) {
     if (!def) throw new Error('Missing variable definition');
@@ -513,12 +515,28 @@ function sampleDirectionAt(lng, lat) {
     return Math.round(deg);
 }
 
+function formatCoord(deg, isLat) {
+    const abs = Math.abs(deg);
+    const d = Math.floor(abs);
+    // Fix to 1 decimal place as requested
+    const m = ((abs - d) * 60).toFixed(1);
+    const suffix = isLat ? (deg >= 0 ? 'N' : 'S') : (deg >= 0 ? 'E' : 'W');
+    // Pad minutes with leading zero if needed (e.g. 05.1)
+    const mStr = m.length < 4 ? '0' + m : m;
+    return `${d}° ${mStr}' ${suffix}`;
+}
+
 function updateTooltipAtLngLat(lng, lat) {
     const value = sampleScalarAt(lng, lat);
     let direction = undefined;
     try { direction = sampleDirectionAt(lng, lat); } catch {}
     const pt = map.project([lng, lat]);
-    tooltipManager.updateAtPixel(pt.x, pt.y, value, direction);
+    
+    // Format coords for tooltip "unit" hack
+    const coordText = `${formatCoord(lat, true)} ${formatCoord(lng, false)}`;
+    
+    // Pass coordText as extraLabel
+    tooltipManager.updateAtPixel(pt.x, pt.y, value, direction, coordText);
 }
 
 // Update tooltip position when map moves/zooms
@@ -550,3 +568,42 @@ window.addEventListener('keydown', (ev) => {
     }
 });
 
+// Auto-geolocation
+if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+        (position) => {
+            console.log("Geolocation successful");
+            const { longitude, latitude } = position.coords;
+            
+            // Center map
+            map.flyTo({
+                center: [longitude, latitude],
+                zoom: 6
+            });
+
+            // Add blue dot marker
+            const dot = document.createElement('div');
+            dot.className = 'pf-location-dot';
+            new maplibregl.Marker({ element: dot })
+                .setLngLat([longitude, latitude])
+                .addTo(map);
+
+            // Activate picker
+            tooltipPinned = true;
+            lastPickedLngLat = [longitude, latitude];
+            
+            try {
+                updateTooltipUnitFormat(menu.getState().unit);
+                updateTooltipAtLngLat(longitude, latitude);
+            } catch (e) {
+                // Data not ready yet, will be handled by render loop
+                console.log("Waiting for data to show tooltip at user location...");
+            }
+        },
+        (error) => {
+            console.log("Geolocation failed, using default coordinates", error);
+        }
+    );
+} else {
+    console.log("Geolocation not supported, using default coordinates");
+}
