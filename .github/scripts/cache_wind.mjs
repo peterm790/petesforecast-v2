@@ -194,7 +194,7 @@ async function main() {
             const url = buildMultiUrl(weatherVariables, variable, chunk, latestIndex);
             
             requests.push(
-                fetch(url).then(async (res) => {
+                fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; PetesForecast/2.0)' } }).then(async (res) => {
                     if (!res.ok) {
                         throw new Error(`Failed to fetch ${variable} leads ${chunk[0]}-${chunk[chunk.length-1]}: ${res.status}`);
                     }
