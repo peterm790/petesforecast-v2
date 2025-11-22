@@ -224,11 +224,11 @@
         "unit": "m/s",
         "categorical": false,
         "min": 0,
-        "max": 35,
+        "max": 18,
         "physMin": 0,
         "physMax": 100,
         "cmapGenre": "ncl",
-        "cmapName": "wind_17lev",
+        "cmapName": "WhiteBlueGreenYellowRed",
         "defaultUnit": "kn",
         "units": ["m/s", "kn", "km/h", "mph"],
         "convert": {
