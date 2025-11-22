@@ -1,7 +1,10 @@
 // only JS code here...
-import 'maplibre-gl/dist/maplibre-gl.css';
-import maplibregl from 'maplibre-gl';
+import 'mapbox-gl/dist/mapbox-gl.css';
+import mapboxgl from 'mapbox-gl';
 import basemapStyle from './assets/basemapstyle.json';
+
+mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
+
 import { combineWindBytesToImage, computeWindSpeedFromUVBytes, createCMAP, createCategoricalPalette, fetchInitTimeRange, parseInitTimeToDate, generateInitTimes6h } from './util.js';
 import { MenuBar } from '@menu_bar/menubar.js';
 import '@menu_bar/menubar.css';
@@ -56,10 +59,11 @@ function getInitIndexFromState(state) {
 
 const bounds = [-180.125, -72.125, 179.875, 72.125];
 
-const map = new maplibregl.Map({
+const map = new mapboxgl.Map({
     container: 'map', // container id
     style: basemapStyle, // local style
     center: [12, -10], // starting position [lng, lat]
+
     zoom: 2.5, // starting zoom
     minZoom: 2,
     maxZoom: 15
@@ -273,7 +277,7 @@ async function renderFromCache(state, leadHours) {
         palette: palette,
         extensions: [new ClipExtension()],
         clipBounds: bounds,
-        opacity: 0.6,
+        opacity: 1,
         pickable: true,
         beforeId: 'physical_line_stream'
     });
@@ -541,7 +545,7 @@ function updateTooltipAtLngLat(lng, lat) {
 
 // Update tooltip position when map moves/zooms
 map.on('move', () => {
-    if (tooltipPinned && lastPickedLngLat) {
+    if (tooltipPinned && lastPickedLngLat && lastRasterImage) {
         try { updateTooltipAtLngLat(lastPickedLngLat[0], lastPickedLngLat[1]); } catch (err) { console.error('Move update failed:', err); }
     }
 });
@@ -584,7 +588,7 @@ if (navigator.geolocation) {
             // Add blue dot marker
             const dot = document.createElement('div');
             dot.className = 'pf-location-dot';
-            new maplibregl.Marker({ element: dot })
+            new mapboxgl.Marker({ element: dot })
                 .setLngLat([longitude, latitude])
                 .addTo(map);
 

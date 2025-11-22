@@ -342,7 +342,8 @@
             "source": "protomaps",
             "source-layer": "water",
             "paint": {
-                "fill-color": "#dcdcdc"
+                "fill-color": "#dcdcdc",
+                "fill-opacity": 0.5
             }
         },
         {
