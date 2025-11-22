@@ -28,6 +28,7 @@
     "weatherlayers-gl": "^2025.8.0"
   },
   "devDependencies": {
-    "vite": "^7.1.11"
+    "vite": "^7.1.11",
+    "wrangler": "^4.50.0"
   }
 }

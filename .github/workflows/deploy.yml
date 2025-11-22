@@ -30,5 +30,6 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # Standard deploy uses wrangler.jsonc configuration which can include pages or workers
           command: deploy
+          # Enable verbose output
+          quiet: false
