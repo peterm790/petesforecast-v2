@@ -1,0 +1,41 @@
+name: Cache Wind Data
+
+on:
+  schedule:
+    - cron: '*/20 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cache:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run Cache Script
+        run: node .github/scripts/cache_wind.mjs
+
+      - name: Commit State Change
+        if: success()
+        run: |
+          git config --global user.name "GitHub Action"
+          git config --global user.email "action@github.com"
+          if [ -f wind_cache_state.json ]; then
+            git add wind_cache_state.json
+            if ! git diff --cached --quiet; then
+              git commit -m "Update wind cache state [skip ci]"
+              git push
+            else
+              echo "No changes to state file."
+            fi
+          fi
+
