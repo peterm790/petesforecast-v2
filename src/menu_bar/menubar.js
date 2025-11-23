@@ -42,7 +42,7 @@ export class MenuBar {
         this.onChange = typeof onChange === 'function' ? onChange : null;
         this.state = {
             initData: initialState.initData || '00Z',
-            frequency: initialState.frequency || 'long-term',
+            frequency: initialState.frequency || '5d',
             variable: initialState.variable || 'temperature',
             colormapGenre: initialState.colormapGenre || 'sequential',
             colormap: initialState.colormap || 'thermal',
@@ -316,9 +316,7 @@ export class MenuBar {
         const select = document.createElement('select');
         select.className = 'pf-menubar-select';
         const opts = [
-            ['24h', '24 Hours'],
-            ['3d', '3 Days'],
-            ['5d', '5 Days'],
+            ['5d', '5 Days (1 Hourly)'],
             ['16d-3h', '16 Days (3 Hourly)']
         ];
         for (const [value, text] of opts) {
@@ -611,7 +609,7 @@ export class MenuBar {
     }
 
     _refreshUI() {
-        // No-op for now; buttons update themselves on click.
+        // No-op; buttons update themselves on click.
     }
 
     _ensureValidVariableState() {

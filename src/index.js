@@ -163,7 +163,7 @@ async function fetchFrames(url, signal) {
 }
 
 const API_BASE = 'https://api.onlineweatherrouting.com';
-// Tunable: number of lead_time slices per request
+// Configuration: number of lead_time slices per request
 const LEAD_CHUNK_SIZE = 12;
 // Debug switch for tracing lead/frame ordering
 const DEBUG_ORDER = true;
@@ -177,7 +177,7 @@ if (typeof window !== 'undefined') {
 // Derived piecewise mapping:
 //  - hour ≤ 120 → index = hour
 //  - hour ≥ 123 and hour % 3 === 0 → index = 121 + (hour - 120) / 3
-// Hour 121/122 are not valid (no data); we raise errors to avoid silent fallbacks.
+// Hour 121/122 are not valid (no data); Errors are raised to avoid silent fallbacks.
 function hourToTimestepIndex(hour) {
     if (!Number.isInteger(hour) || hour < 0) {
         throw new Error(`Invalid lead hour: ${hour}`);
@@ -286,7 +286,7 @@ async function renderFromCache(state, leadHours) {
         clipBounds: bounds,
         opacity: 1,
         pickable: true,
-        beforeId: 'physical_line_stream'
+        beforeId: 'earth'
     });
 
     const layers = [raster];
@@ -360,6 +360,44 @@ function countCachedFrames(variables, initKey, leads) {
     return done;
 }
 
+function updateTimeSliderConstraint(state, leads) {
+    // Calculate the maximum contiguous lead available from the start.
+    // Iterates through leads from index 0. If a lead is fully loaded (all variables), continues.
+    // Stops at the first gap. The last fully loaded index defines the available range limit.
+    
+    if (!leads || leads.length === 0) return;
+    
+    const initKey = getInitIndexFromState(state);
+    const variablesAll = (state.variable === 'wind_speed_10m')
+        ? ['wind_u_10m', 'wind_v_10m']
+        : [state.variable, 'wind_u_10m', 'wind_v_10m'];
+        
+    let maxIndex = -1;
+    for (let i = 0; i < leads.length; i++) {
+        const lead = leads[i];
+        let allVarsLoaded = true;
+        for (const variable of variablesAll) {
+            if (!dataCache.get(variable, lead, initKey)) {
+                allVarsLoaded = false;
+                break;
+            }
+        }
+        if (allVarsLoaded) {
+            maxIndex = i;
+        } else {
+            // Stops at the first gap to enforce contiguity, ensuring the user cannot skip over unloaded data.
+            break; 
+        }
+    }
+    
+    if (maxIndex >= 0) {
+        timeSlider.setAvailableRange(maxIndex);
+    } else {
+        // Defaults to 0 if no leads are fully loaded.
+        timeSlider.setAvailableRange(0); 
+    }
+}
+
 async function preloadAll(state) {
     const myToken = ++preloadToken;
     const leads = leadsForFrequency(state.frequency);
@@ -372,73 +410,99 @@ async function preloadAll(state) {
         ? ['wind_u_10m', 'wind_v_10m']
         : [state.variable, 'wind_u_10m', 'wind_v_10m'];
     const varsCount = variablesAll.length;
-    // Track progress in hours for display, but keep completion based on all variables
-    const itemsTotal = leads.length * varsCount;
-    const hoursTotal = leads.length;
-    const missingCount = variablesAll.reduce((accVars, variable) => accVars + (
-        leads.reduce((accLeads, lead) => accLeads + (dataCache.get(variable, lead, initKey) ? 0 : 1), 0)
-    ), 0);
-    if (missingCount > 0 && myToken === preloadToken) {
-        overlay.show(hoursTotal);
-        // reflect already-cached frames and start polling progress from cache (all variables)
-        const initialItemsDone = itemsTotal - missingCount;
-        overlay.tick(Math.floor(initialItemsDone / varsCount));
-        await new Promise(requestAnimationFrame);
-        if (progressTimer) { clearInterval(progressTimer); progressTimer = null; }
-        progressTimer = setInterval(() => {
-            if (myToken !== preloadToken) return; // ignore outdated
-            const itemsDone = countCachedFrames(variablesAll, initKey, leads);
-            overlay.tick(Math.floor(itemsDone / varsCount));
-            if (itemsDone >= itemsTotal) {
-                clearInterval(progressTimer);
-                progressTimer = null;
-                overlay.hide();
-            }
-        }, 150);
-    }
-    isCacheReady = false;
-    try {
-        // 1) Prime: ensure current lead for selected variable and winds are cached first
-        // Prime: fetch the 12-hour chunk that contains the current lead first
-        const allLeads = leads;
-        const idx = Math.max(0, allLeads.indexOf(currentLeadHours));
-        const chunkStart = Math.max(0, Math.floor(idx / LEAD_CHUNK_SIZE) * LEAD_CHUNK_SIZE);
-        const leadsPrime = allLeads.slice(chunkStart, chunkStart + LEAD_CHUNK_SIZE);
-        await dataCache.preload({
-            variables: variablesAll,
-            initKey,
-            leads: leadsPrime,
-            buildUrl: (variable, leadsChunk) => buildMultiUrl(variable, leadsChunk, initKey),
-            fetchData: (url) => fetchFrames(url),
-            onProgress: () => {},
-            chunkSize: LEAD_CHUNK_SIZE
-        });
-        // Render immediately after prime
-        if (myToken === preloadToken) {
-            renderFromCache(state, currentLeadHours);
-        }
 
-        // 2) Continue: preload remaining frames for selected variable and winds together
-        await dataCache.preload({
-            variables: variablesAll,
-            initKey,
-            leads,
-            buildUrl: (variable, leadsChunk) => buildMultiUrl(variable, leadsChunk, initKey),
-            fetchData: (url) => fetchFrames(url),
-            onProgress: () => {},
-            chunkSize: LEAD_CHUNK_SIZE
-        });
-        isCacheReady = true;
-    } catch (err) {
-        // Surface error per rules
-        console.error('Preload failed:', err);
-        throw err;
-    } finally {
-        // Hide only if everything is present (all variables across all leads), regardless of hour display
-        if (myToken === preloadToken && !progressTimer) {
-            const allPresent = variablesAll.every((variable) => leads.every((lead) => dataCache.get(variable, lead, initKey)));
-            if (allPresent) overlay.hide();
+    // Split leads into foreground (<= 24h) and background (> 24h)
+    const initialLeads = leads.filter(h => h <= 24);
+    const bgLeads = leads.filter(h => h > 24);
+
+    // --- Phase 1: Foreground Load (Blocking Overlay) ---
+    const initialMissing = variablesAll.reduce((accVars, variable) => accVars + (
+        initialLeads.reduce((accLeads, lead) => accLeads + (dataCache.get(variable, lead, initKey) ? 0 : 1), 0)
+    ), 0);
+
+    // Update slider constraint initially (likely 0 or cached amount)
+    updateTimeSliderConstraint(state, leads);
+
+    if (initialMissing > 0 && myToken === preloadToken) {
+        overlay.show(initialLeads.length);
+        // Calculates already done frames for overlay tick base
+        const initialTotalFrames = initialLeads.length * varsCount;
+        const initialDoneFrames = initialTotalFrames - initialMissing;
+        overlay.tick(Math.floor(initialDoneFrames / varsCount));
+
+        try {
+            await dataCache.preload({
+                variables: variablesAll,
+                initKey,
+                leads: initialLeads,
+                buildUrl: (variable, leadsChunk) => buildMultiUrl(variable, leadsChunk, initKey),
+                fetchData: (url) => fetchFrames(url),
+                onProgress: (doneInPreload, totalInPreload) => {
+                    if (myToken !== preloadToken) return;
+                    // Calculates global progress for this phase.
+                    // Re-counts total cached frames to ensure accuracy for the overlay, as dataCache.preload reports relative progress.
+                    const currentDone = countCachedFrames(variablesAll, initKey, initialLeads);
+                    overlay.tick(Math.floor(currentDone / varsCount));
+                },
+                chunkSize: LEAD_CHUNK_SIZE
+            });
+        } catch (err) {
+            console.error('Foreground preload failed:', err);
+            throw err;
         }
+    }
+
+    if (myToken !== preloadToken) return;
+
+    // Render immediately and unlock UI
+    isCacheReady = true;
+    updateTimeSliderConstraint(state, leads); // Should cover initialLeads now
+    renderFromCache(state, currentLeadHours);
+    overlay.hide();
+
+    // --- Phase 2: Background Load (Non-blocking) ---
+    if (bgLeads.length > 0) {
+        // Calculate missing for background
+        const bgMissing = variablesAll.reduce((accVars, variable) => accVars + (
+            bgLeads.reduce((accLeads, lead) => accLeads + (dataCache.get(variable, lead, initKey) ? 0 : 1), 0)
+        ), 0);
+
+        if (bgMissing > 0) {
+            const totalBgFrames = bgLeads.length * varsCount;
+            const doneBgFrames = totalBgFrames - bgMissing;
+            
+            timeSlider.setBackgroundLoading(true, doneBgFrames, totalBgFrames);
+
+            // Fire and forget
+            dataCache.preload({
+                variables: variablesAll,
+                initKey,
+                leads: bgLeads,
+                buildUrl: (variable, leadsChunk) => buildMultiUrl(variable, leadsChunk, initKey),
+                fetchData: (url) => fetchFrames(url),
+                onProgress: () => {
+                    if (myToken !== preloadToken) return;
+                    const currentDone = countCachedFrames(variablesAll, initKey, bgLeads);
+                    timeSlider.setBackgroundLoading(true, currentDone, totalBgFrames);
+                    updateTimeSliderConstraint(state, leads);
+                },
+                chunkSize: LEAD_CHUNK_SIZE
+            }).then(() => {
+                if (myToken === preloadToken) {
+                    timeSlider.setBackgroundLoading(false);
+                    updateTimeSliderConstraint(state, leads);
+                }
+            }).catch(err => {
+                console.error('Background preload failed:', err);
+                if (myToken === preloadToken) {
+                    timeSlider.setBackgroundLoading(false);
+                }
+            });
+        } else {
+             timeSlider.setBackgroundLoading(false);
+        }
+    } else {
+        timeSlider.setBackgroundLoading(false);
     }
 }
 
@@ -455,7 +519,7 @@ timeSlider.mount(document.body);
 const menu = new MenuBar({
     initialState: {
         initData: '',
-        frequency: '24h',
+        frequency: '5d',
 			variable: 'wind_speed_10m',
         colormapGenre: 'cmocean',
         colormap: 'thermal'

@@ -45,6 +45,24 @@ export class TimeSlider {
         this.currentIndex = 0;
         this.initTime = null; // Date in UTC
         this._lastActive = null;
+        this.bgLoading = { active: false, done: 0, total: 0 };
+        this.maxPlayableIndex = Infinity;
+    }
+
+    setAvailableRange(maxIndex) {
+        this.maxPlayableIndex = typeof maxIndex === 'number' ? maxIndex : Infinity;
+        
+        // If current index is beyond available range, clamp it
+        if (this.currentIndex > this.maxPlayableIndex) {
+            this._setIndex(this.maxPlayableIndex);
+        }
+        
+        this._updateTrackProgress();
+    }
+
+    setBackgroundLoading(active, done = 0, total = 0) {
+        this.bgLoading = { active, done, total };
+        this._updateLabel();
     }
 
     mount(target) {
@@ -77,10 +95,18 @@ export class TimeSlider {
         input.max = String(Math.max(0, this.availableHours.length - 1));
         input.step = '1';
         input.value = String(this.currentIndex);
-        input.disabled = true; // until init time known
+        input.disabled = true; // Disabled until init time is known
 
         input.addEventListener('input', () => {
-            this.currentIndex = Number(input.value);
+            const val = Number(input.value);
+            // Apply constraint immediately during drag
+            if (this.maxPlayableIndex !== Infinity && val > this.maxPlayableIndex) {
+                input.value = String(this.maxPlayableIndex);
+                this.currentIndex = this.maxPlayableIndex;
+            } else {
+                this.currentIndex = val;
+            }
+            
             this._updateLabel();
             this._emitHours();
             this._markLastActive('slider');
@@ -197,7 +223,10 @@ export class TimeSlider {
         const freqChanged = state.frequency !== this.currentFrequency;
         this.currentFrequency = state.frequency;
         this.availableHours = newHours;
-
+        
+        // Resets playable range until updated
+        this.maxPlayableIndex = Infinity;
+        
         // Init time may be ISO string like 2025-01-01T00:00:00.000000000; parse to Date (UTC)
         let parsedInit = null;
         if (state.initData && typeof state.initData === 'string' && state.initData !== '00Z') {
@@ -236,6 +265,23 @@ export class TimeSlider {
         this.slider.step = '1';
         this.minLabel.textContent = `Hour ${this.availableHours[0] || 1}`;
         this.maxLabel.textContent = `Hour ${this.availableHours[maxIndex]}`;
+        this._updateTrackProgress();
+    }
+    
+    _updateTrackProgress() {
+        if (!this.slider) return;
+        // If we have a constraint, show it visually
+        const total = this.availableHours.length - 1;
+        if (total <= 0) return;
+        
+        // Defaults to 100% if unlimited
+        let pct = 100;
+        if (this.maxPlayableIndex !== Infinity) {
+            pct = Math.min(100, Math.max(0, (this.maxPlayableIndex / total) * 100));
+        }
+        
+        // Updates background gradient: Loaded part (0.5 opacity), Unloaded part (0.1 opacity).
+        this.slider.style.background = `linear-gradient(to right, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0.5) ${pct}%, rgba(255,255,255,0.1) ${pct}%, rgba(255,255,255,0.1) 100%)`;
     }
 
     _emitHours() {
@@ -247,17 +293,36 @@ export class TimeSlider {
     _updateLabel() {
         if (!this.label) return;
         const leadHours = (this.availableHours[this.currentIndex] !== undefined) ? this.availableHours[this.currentIndex] : (this.availableHours[0] || 1);
+        
+        let mainText = '';
         if (!this.initTime) {
-            this.label.textContent = `Lead ${leadHours}h`;
-            return;
+            mainText = `Lead ${leadHours}h`;
+        } else {
+            const ts = new Date(this.initTime.getTime() + leadHours * 60 * 60 * 1000);
+            mainText = `${formatLocal(ts)} (Lead ${leadHours}h)`;
         }
-        const ts = new Date(this.initTime.getTime() + leadHours * 60 * 60 * 1000);
-        this.label.textContent = `${formatLocal(ts)} (Lead ${leadHours}h)`;
+
+        this.label.innerHTML = '';
+        this.label.appendChild(document.createTextNode(mainText));
+
+        if (this.bgLoading && this.bgLoading.active) {
+            const spinner = document.createElement('span');
+            spinner.className = 'pf-timeslider-spinner';
+            this.label.appendChild(spinner);
+            
+            const progress = document.createElement('span');
+            progress.className = 'pf-timeslider-loading-text';
+            progress.textContent = `${this.bgLoading.done}/${this.bgLoading.total}`;
+            this.label.appendChild(progress);
+        }
     }
 
     _setIndex(idx) {
         const maxIndex = Math.max(0, this.availableHours.length - 1);
-        const clamped = Math.min(maxIndex, Math.max(0, idx));
+        // Clamp to playable range if set
+        const limit = (this.maxPlayableIndex !== Infinity) ? Math.min(maxIndex, this.maxPlayableIndex) : maxIndex;
+        
+        const clamped = Math.min(limit, Math.max(0, idx));
         this.currentIndex = clamped;
         if (this.slider) this.slider.value = String(clamped);
         this._updateLabel();
