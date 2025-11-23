@@ -10,6 +10,9 @@
     font-family: "Inter", "Segoe UI", system-ui, sans-serif;
     line-height: 1.4;
     font-size: 0.78rem;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
   }
   .pf-menubar-container.hidden { display: none; }
   
@@ -30,6 +33,7 @@
      ======================= */
   .pf-menubar-sidebar {
     position: relative;
+    touch-action: pan-y;
     display: flex;
     flex-direction: column;
     gap: 0.6rem;

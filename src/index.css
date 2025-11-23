@@ -25,20 +25,45 @@ body {
 /* Custom Tooltip */
 .pf-tooltip {
   position: absolute;
-  pointer-events: none;
+  pointer-events: auto;
+  user-select: none;
+  -webkit-user-select: none;
   background: rgba(20, 20, 30, 0.65); /* Reduced opacity to 0.85 */
   border: 1px solid rgba(255, 255, 255, 0.2);
   color: #fff;
-  padding: 8px 12px;
+  padding: 8px 24px 8px 12px; /* Added right padding for close button */
   border-radius: 8px;
   font-size: 13px;
-  z-index: 10000;
+  z-index: 900; /* Behind menubar (1000) */
   box-shadow: 0 4px 12px rgba(0,0,0,0.4);
   white-space: nowrap;
   min-width: 100px;
   transform: translate(-50%, -100%); /* Center horizontally, place above target */
   margin-top: -14px; /* Space between target and tooltip */
   backdrop-filter: blur(4px);
+}
+
+.pf-tooltip-close {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  transition: background 0.2s, transform 0.15s;
+}
+
+.pf-tooltip-close:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: scale(1.1);
 }
 
 /* Triangle pointer */

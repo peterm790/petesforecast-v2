@@ -112,7 +112,14 @@ function isMenuOpen() {
 }
 
 const legendManager = createLegendManager({ isMenuOpen });
-const tooltipManager = createTooltipManager({ getDeckOverlay: () => deckOverlay });
+const tooltipManager = createTooltipManager({
+    getDeckOverlay: () => deckOverlay,
+    onClose: () => {
+        tooltipPinned = false;
+        lastPickedLngLat = null;
+        tooltipManager.clear();
+    }
+});
 
 function updateTooltipUnitFormat(unitString) {
     const unit = typeof unitString === 'string' ? unitString : '';

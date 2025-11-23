@@ -1,13 +1,30 @@
 // Custom tooltip manager replacing weatherlayers-gl control
 
-export function createTooltipManager() {
+export function createTooltipManager({ onClose } = {}) {
     let tooltipElement = null;
+    let contentElement = null;
     let currentUnit = '';
 
     function ensureTooltip() {
         if (tooltipElement) return tooltipElement;
         tooltipElement = document.createElement('div');
         tooltipElement.className = 'pf-tooltip';
+        
+        // Close button
+        const closeBtn = document.createElement('div');
+        closeBtn.className = 'pf-tooltip-close';
+        closeBtn.innerHTML = '×';
+        closeBtn.onclick = (e) => {
+            e.stopPropagation();
+            if (onClose) onClose();
+            else if (tooltipElement) tooltipElement.style.display = 'none';
+        };
+        tooltipElement.appendChild(closeBtn);
+
+        // Content container
+        contentElement = document.createElement('div');
+        tooltipElement.appendChild(contentElement);
+
         document.body.appendChild(tooltipElement);
         return tooltipElement;
     }
@@ -17,7 +34,8 @@ export function createTooltipManager() {
     }
 
     function updateAtPixel(x, y, value, direction, extraLabel) {
-        const el = ensureTooltip();
+        ensureTooltip();
+        const el = tooltipElement;
         
         // Hide if no valid data
         if (value === null || value === undefined || isNaN(value)) {
@@ -52,7 +70,7 @@ export function createTooltipManager() {
             content += `<div class="pf-tooltip-coords">${extraLabel}</div>`;
         }
         
-        el.innerHTML = content;
+        if (contentElement) contentElement.innerHTML = content;
     }
 
     function clear() {
