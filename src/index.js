@@ -411,9 +411,9 @@ async function preloadAll(state) {
         : [state.variable, 'wind_u_10m', 'wind_v_10m'];
     const varsCount = variablesAll.length;
 
-    // Split leads into foreground (<= 24h) and background (> 24h)
-    const initialLeads = leads.filter(h => h <= 24);
-    const bgLeads = leads.filter(h => h > 24);
+    // Split leads into foreground (<= 12h) and background (> 12h)
+    const initialLeads = leads.filter(h => h <= 12);
+    const bgLeads = leads.filter(h => h > 12);
 
     // --- Phase 1: Foreground Load (Blocking Overlay) ---
     const initialMissing = variablesAll.reduce((accVars, variable) => accVars + (
