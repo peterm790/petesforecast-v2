@@ -37,7 +37,15 @@
     display: flex;
     flex-direction: column;
     gap: 0.6rem;
-    width: clamp(220px, 72vw, 320px);
+    /* Width control: clamp between min 220px and max 66vw (2/3rds width) */
+    width: clamp(220px, 72vw, 66vw);
+    max-width: 320px; /* Optional: Keep existing max width cap? User said "max 2/3rds" but usually sidebar is narrow. Let's stick to clamp logic but cap at 66vw for small screens, or just max-width: 66vw explicitly? */
+    /* Actually, the previous clamp(220px, 72vw, 320px) capped it at 320px.
+       If user wants it to take up *up to* 2/3rds, that usually implies allowing it to be wider on small screens.
+       Let's set max-width to 66vw to respect the constraint, and keep width flexible. */
+    width: min(320px, 66vw); 
+    min-width: 220px;
+    
     container-type: inline-size;
     border-radius: 12px;
     border: 1px solid rgba(255,255,255,.18);
@@ -270,7 +278,8 @@
   /* =======================
      RESPONSIVE
      ======================= */
-  @media (max-width: 360px) {
+  /* Removed to respect 2/3rds rule */
+  /* @media (max-width: 360px) {
     .pf-menubar-sidebar { width: 92vw; }
-  }
+  } */
   

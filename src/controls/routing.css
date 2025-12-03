@@ -37,7 +37,10 @@
     display: flex;
     flex-direction: column;
     gap: 0.6rem;
-    width: clamp(220px, 72vw, 320px);
+    /* Width control: max 2/3rds (66vw), typical cap 320px */
+    width: min(320px, 66vw);
+    min-width: 220px;
+    
     container-type: inline-size;
     border-radius: 12px;
     /* Dark glass background for better contrast */
@@ -219,6 +222,7 @@
   /* =======================
      RESPONSIVE
      ======================= */
-  @media (max-width: 360px) {
+  /* Removed to respect 2/3rds rule */
+  /* @media (max-width: 360px) {
     .pf-routing-sidebar { width: 92vw; }
-  }
+  } */

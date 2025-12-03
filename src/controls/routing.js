@@ -243,10 +243,9 @@ export class RoutingControl {
         this.loadingOverlay.mount(sidebar);
         
         // Initially show open button and hide menu, or vice versa?
-        // Let's show menu by default for discoverability? Or hide?
-        // User said "looks similar to the current menubar", which starts open.
-        wrap.classList.remove('hidden');
-        openBtn.style.display = 'none';
+        // User requested: "routing menu be close by default"
+        wrap.classList.add('hidden');
+        openBtn.style.display = 'flex';
     }
 
     _createLocationPanel(title, prefix) {
