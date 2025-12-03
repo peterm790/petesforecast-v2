@@ -1,7 +1,7 @@
 // Plain JS time slider component. DOM-based, similar to MenuBar.
 // Exposes selected lead time (in hours) via onChange callback.
 
-import { parseInitTimeToDate } from '../util.js';
+import { parseInitTimeToDate, formatLocal, formatUTC } from '../util.js';
 
 function hoursForFrequency(freq) {
     if (freq === '24h') return Array.from({ length: 24 }, (_, i) => i + 1);
@@ -9,22 +9,6 @@ function hoursForFrequency(freq) {
     if (freq === '5d') return Array.from({ length: 120 }, (_, i) => i + 1);
     if (freq === '16d-3h') return Array.from({ length: 127 }, (_, i) => (i + 1) * 3); // 3..381
     throw new Error(`Unknown frequency: ${freq}`);
-}
-
-function formatLocal(date) {
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const dayName = days[date.getDay()];
-    const dd = String(date.getDate()).padStart(2, '0');
-    const mm = String(date.getMonth() + 1).padStart(2, '0');
-    const hh = String(date.getHours()).padStart(2, '0');
-    const mi = String(date.getMinutes()).padStart(2, '0');
-    const offsetMin = -date.getTimezoneOffset();
-    const sign = offsetMin >= 0 ? '+' : '-';
-    const abs = Math.abs(offsetMin);
-    const offH = Math.floor(abs / 60);
-    const offM = abs % 60;
-    const tz = offM ? `GMT${sign}${offH}:${String(offM).padStart(2, '0')}` : `GMT${sign}${offH}`;
-    return `${dayName} (${dd}/${mm}) ${hh}:${mi} ${tz}`;
 }
 
 export class TimeSlider {
@@ -44,9 +28,11 @@ export class TimeSlider {
         this.availableHours = hoursForFrequency('3d');
         this.currentIndex = 0;
         this.initTime = null; // Date in UTC
+        this.showLocalTime = false;
         this._lastActive = null;
         this.bgLoading = { active: false, done: 0, total: 0 };
         this.maxPlayableIndex = Infinity;
+        this.useLocalTime = false;
     }
 
     setAvailableRange(maxIndex) {
@@ -223,6 +209,7 @@ export class TimeSlider {
         const freqChanged = state.frequency !== this.currentFrequency;
         this.currentFrequency = state.frequency;
         this.availableHours = newHours;
+        this.showLocalTime = !!state.showLocalTime;
         
         // Resets playable range until updated
         this.maxPlayableIndex = Infinity;
@@ -299,7 +286,8 @@ export class TimeSlider {
             mainText = `Lead ${leadHours}h`;
         } else {
             const ts = new Date(this.initTime.getTime() + leadHours * 60 * 60 * 1000);
-            mainText = `${formatLocal(ts)} (Lead ${leadHours}h)`;
+            const timeStr = this.showLocalTime ? formatLocal(ts) : formatUTC(ts);
+            mainText = `${timeStr} (Lead ${leadHours}h)`;
         }
 
         this.label.innerHTML = '';
@@ -331,6 +319,13 @@ export class TimeSlider {
 
     stepBy(delta) {
         this._setIndex(this.currentIndex + delta);
+    }
+
+    setLeadHour(hour) {
+        const idx = this.availableHours.indexOf(hour);
+        if (idx !== -1) {
+            this._setIndex(idx);
+        }
     }
 
     _markLastActive(source) {

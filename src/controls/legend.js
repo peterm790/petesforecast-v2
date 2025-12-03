@@ -36,14 +36,22 @@ export function createLegendManager({ isMenuOpen }) {
     async function position() {
         ensureHosts();
         const ctrl = await ensureControl();
-        const host = isMenuOpen() ? openHost : closedHost;
+        
+        // User requested to hide legend when menu is hidden
+        if (!isMenuOpen()) {
+            try { ctrl.remove(); } catch {}
+            currentHost = null;
+            return;
+        }
+
+        const host = openHost;
         if (!host) return;
         if (currentHost === host) return;
         try { ctrl.remove(); } catch {}
         ctrl.addTo(host);
         currentHost = host;
-        if (openHost) openHost.style.display = isMenuOpen() ? '' : 'none';
-        if (closedHost) closedHost.style.display = isMenuOpen() ? 'none' : '';
+        if (openHost) openHost.style.display = '';
+        if (closedHost) closedHost.style.display = 'none';
     }
 
     async function updateConfig(cfg) {

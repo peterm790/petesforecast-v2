@@ -1,0 +1,224 @@
+/* =======================
+   ROUTING CONTAINER
+   ======================= */
+   .pf-routing-container {
+    position: fixed;
+    top: clamp(8px, 1.5vh, 16px);
+    left: clamp(8px, 1.5vh, 16px); /* Left positioning */
+    z-index: 1000;
+    --pf-glass-tint: rgba(0,0,0,.28);
+    font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+    line-height: 1.4;
+    font-size: 0.78rem;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+  }
+  .pf-routing-container.hidden { display: none; }
+  
+  /* =======================
+     WRAPPER
+     ======================= */
+  .pf-routing-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(6px, 1.2cqw, 10px);
+    align-items: stretch;
+    transition: transform .3s ease;
+  }
+  .pf-routing-wrap.hidden { display: none; }
+  
+  /* =======================
+     SIDEBAR (scrollable)
+     ======================= */
+  .pf-routing-sidebar {
+    position: relative;
+    touch-action: pan-y;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    width: clamp(220px, 72vw, 320px);
+    container-type: inline-size;
+    border-radius: 12px;
+    /* Dark glass background for better contrast */
+    border: 1px solid rgba(255,255,255,.15);
+    background: linear-gradient(135deg, rgba(20, 25, 40, 0.95), rgba(20, 25, 40, 0.85));
+    padding: clamp(8px, 2cqw, 12px);
+    box-shadow: 0 10px 28px rgba(0,0,0,.5);
+    backdrop-filter: blur(14px);
+    max-height: 85vh;
+    overflow-y: auto;     /* scrolling enabled */
+    overflow-x: hidden;
+    scrollbar-gutter: stable both-edges;
+  }
+  /* Ensure direct children never exceed container width */
+  .pf-routing-sidebar > * { max-width: 100%; box-sizing: border-box; }
+  .pf-routing-sidebar::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: var(--pf-glass-tint);
+    pointer-events: none;
+    z-index: 0;
+  }
+  
+  /* =======================
+     PANEL (flexible, not squashed)
+     ======================= */
+  .pf-routing-panel {
+    position: relative;
+    width: 100%;
+    max-width: 100%;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,.1);
+    /* Slightly lighter dark panel */
+    background: rgba(255, 255, 255, 0.04);
+    padding: clamp(8px, 2cqw, 12px);
+    box-shadow: 0 4px 12px rgba(0,0,0,.25);
+    overflow: visible;    /* content expands naturally */
+    flex-shrink: 0;       /* don't squash in flex layout */
+    box-sizing: border-box;
+  }
+  
+  /* =======================
+     LABELS
+     ======================= */
+  .pf-routing-label {
+    display: block;
+    font-size: clamp(12px, 1.2cqw, 14px);
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 0.35rem;
+    text-shadow: 0 1px 2px rgba(0,0,0,.8);
+  }
+  
+  /* =======================
+     BUTTONS & SELECTS
+     ======================= */
+  .pf-routing-input,
+  .pf-routing-button {
+    width: 100%;
+    max-width: 100%;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,.2);
+    background: rgba(0,0,0,.4);
+    color: #fff;
+    padding: clamp(6px, 1.6cqw, 10px) clamp(8px, 2cqw, 12px);
+    backdrop-filter: blur(8px);
+    cursor: pointer; /* Or text for inputs */
+    font-size: clamp(12px, 1.2cqw, 14px);
+    min-height: clamp(30px, 4cqw, 36px);
+    transition: background .2s ease, transform .15s ease, box-shadow .15s ease;
+    box-sizing: border-box;
+  }
+  .pf-routing-input { cursor: text; }
+  
+  .pf-routing-input:hover,
+  .pf-routing-button:hover {
+    background: rgba(255,255,255,.1);
+  }
+  .pf-routing-button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 3px 8px rgba(0,0,0,.2);
+  }
+  
+  .pf-routing-button.active {
+    background: linear-gradient(90deg, #ff7a18, #af002d 70%);
+    box-shadow: 0 4px 10px rgba(175,0,45,.35);
+    color: #fff;
+  }
+  
+  /* =======================
+     OPEN / CLOSE BUTTONS
+     ======================= */
+  .pf-routing-open,
+  .pf-routing-close {
+    border-radius: 9999px;
+    border: 1px solid rgba(255,255,255,.35);
+    color: #fff;
+    backdrop-filter: blur(6px);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .pf-routing-open {
+    width: 1.8rem;
+    height: 1.8rem;
+    background: linear-gradient(135deg, #00b4d8, #0077b6); /* Different color for distinction */
+    box-shadow: 0 6px 14px rgba(0,0,0,.28);
+    z-index: 20; /* Ensure it's clickable */
+  }
+  .pf-routing-close {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 22px;
+    height: 22px;
+    background: rgba(255,255,255,.18);
+    box-shadow: 0 5px 10px rgba(0,0,0,.25);
+    z-index: 10; /* Ensure it's above panels */
+  }
+  .pf-routing-open:hover,
+  .pf-routing-close:hover {
+    transform: scale(1.05);
+    box-shadow: 0 8px 18px rgba(0,0,0,.32);
+  }
+
+  /* =======================
+     CONTEXT MENU
+     ======================= */
+  .pf-context-menu {
+    position: absolute;
+    z-index: 2000;
+    background: rgba(20, 25, 40, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    backdrop-filter: blur(10px);
+    padding: 4px 0;
+    min-width: 140px;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.6);
+    display: none; /* Hidden by default */
+  }
+  
+  .pf-context-menu-item {
+    padding: 10px 16px; /* Larger touch target */
+    color: #fff;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: background 0.2s;
+  }
+  
+  .pf-context-menu-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  /* =======================
+     HANDLES (Draggable corners)
+     ======================= */
+  .pf-routing-handle {
+    width: 12px;
+    height: 12px;
+    background-color: rgba(0, 0, 0, 0.4);
+    border: 2px solid rgba(255, 255, 255, 0.8);
+    border-radius: 50%; /* Circles for better touch feel */
+    backdrop-filter: blur(4px);
+    cursor: move;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+    transform: translate(-50%, -50%); /* Center anchor */
+  }
+  .pf-routing-handle:hover {
+    background-color: rgba(255, 255, 255, 0.3);
+    border-color: #fff;
+    transform: translate(-50%, -50%) scale(1.2);
+  }
+
+  /* =======================
+     RESPONSIVE
+     ======================= */
+  @media (max-width: 360px) {
+    .pf-routing-sidebar { width: 92vw; }
+  }

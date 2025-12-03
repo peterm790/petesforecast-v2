@@ -16,6 +16,7 @@ import { DataCache } from './data/cache.js';
 import weatherVariables from './assets/weather_variables.json';
 import { createLegendManager } from './controls/legend.js';
 import { createTooltipManager } from './controls/tooltip.js';
+import { RoutingControl } from './controls/routing.js';
 import './index.css'; // Import global CSS for location dot
 
 // Unit conversion helpers (affine y = a*x + b) derived from weather_variables.json per variable
@@ -67,6 +68,14 @@ const map = new mapboxgl.Map({
     zoom: 2.5, // starting zoom
     minZoom: 2,
     maxZoom: 15
+});
+
+const routingControl = new RoutingControl(map);
+routingControl.mount(document.body);
+routingControl.onRouteLoaded((leadHours) => {
+    if (timeSlider) {
+        timeSlider.setLeadHour(leadHours);
+    }
 });
 
 // deck.gl overlay (lazy); created on first render
@@ -511,6 +520,16 @@ const timeSlider = new TimeSlider({
     onChange: (leadHours) => {
         currentLeadHours = leadHours;
         if (isCacheReady) renderFromCache(menu.getState(), leadHours);
+        
+        // Update routing boat position
+        if (routingControl && menu) {
+            const state = menu.getState();
+            if (state.initData) {
+                const initTime = new Date(state.initData).getTime();
+                const targetTime = new Date(initTime + leadHours * 3600 * 1000);
+                routingControl.setCurrentTime(targetTime.toISOString());
+            }
+        }
     }
 });
 timeSlider.mount(document.body);
@@ -529,11 +548,42 @@ const menu = new MenuBar({
             // Defer any actions until init times are loaded and initData is set
             return;
         }
+        // Pass available leads to routing control for the dropdown
+        if (routingControl) {
+            const leads = leadsForFrequency(state.frequency);
+            if (typeof routingControl.setShowLocalTime === 'function') {
+                routingControl.setShowLocalTime(!!state.showLocalTime);
+            }
+            if (typeof routingControl.setFrequency === 'function') {
+                routingControl.setFrequency(state.frequency);
+            }
+            routingControl.setTimeOptions(leads, state.initData);
+            
+            // Pass init time index to routing control API
+            if (INIT_ISOS_ASC) {
+                const idx = getInitIndexFromState(state);
+                routingControl.setInitTimeIndex(idx);
+            }
+        }
+        
         timeSlider.setFromMenuState(state);
+        
+        // Update routing boat position if init time changed
+        if (routingControl && state.initData) {
+             // currentLeadHours is global state tracked from slider
+             const initTime = new Date(state.initData).getTime();
+             const targetTime = new Date(initTime + currentLeadHours * 3600 * 1000);
+             routingControl.setCurrentTime(targetTime.toISOString());
+        }
+
         if (meta && meta.requiresPreload) {
             await preloadAll(state);
         }
         renderFromCache(state, currentLeadHours);
+    },
+    onToggle: (isOpen) => {
+        // Update legend position/visibility immediately
+        setTimeout(() => { legendManager.position(); }, 0);
     }
 });
 menu.mount(document.body);
@@ -541,11 +591,29 @@ menu.mount(document.body);
 // Initialize slider from current menu state
 timeSlider.setFromMenuState(menu.getState());
 
+// Initialize routing control time options
+const initialLeads = leadsForFrequency(menu.getState().frequency);
+routingControl.setTimeOptions(initialLeads, menu.getState().initData);
+
 // After first paint, load init-time range and kick off first preload+render
 requestAnimationFrame(async () => {
     try {
         await loadInitRange();
         menu.setState({ initData: latestISO });
+        // Also update routing options now that we have initData
+        const leads = leadsForFrequency(menu.getState().frequency);
+        if (typeof routingControl.setShowLocalTime === 'function') {
+            routingControl.setShowLocalTime(!!menu.getState().showLocalTime);
+        }
+        if (typeof routingControl.setFrequency === 'function') {
+            routingControl.setFrequency(menu.getState().frequency);
+        }
+        routingControl.setTimeOptions(leads, latestISO);
+        
+        // Default latest is the last index
+        if (INIT_ISOS_ASC) {
+            routingControl.setInitTimeIndex(INIT_ISOS_ASC.length - 1);
+        }
     } catch (err) {
         console.error('Failed to load init-time range:', err);
         throw err;
@@ -647,7 +715,6 @@ window.addEventListener('keydown', (ev) => {
 if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
         (position) => {
-            console.log("Geolocation successful");
             const { longitude, latitude } = position.coords;
             
             // Center map
@@ -663,6 +730,11 @@ if (navigator.geolocation) {
                 .setLngLat([longitude, latitude])
                 .addTo(map);
 
+            // Default routing start to user location
+            if (routingControl) {
+                routingControl.setStart([longitude, latitude]);
+            }
+
             // Activate picker
             tooltipPinned = true;
             lastPickedLngLat = [longitude, latitude];
@@ -672,13 +744,12 @@ if (navigator.geolocation) {
                 updateTooltipAtLngLat(longitude, latitude);
             } catch (e) {
                 // Data not ready yet, will be handled by render loop
-                console.log("Waiting for data to show tooltip at user location...");
             }
         },
         (error) => {
-            console.log("Geolocation failed, using default coordinates", error);
+            // Geolocation failed or denied, using default
         }
     );
 } else {
-    console.log("Geolocation not supported, using default coordinates");
+    // Geolocation not supported
 }

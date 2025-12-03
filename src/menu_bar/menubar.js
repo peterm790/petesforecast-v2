@@ -1,7 +1,7 @@
 // Build-time discovery of available colormaps using Vite's globbing
 const CPT_FILES = import.meta.glob('/src/assets/cmaps/cpt-city/**/*.cpt', { query: '?raw', import: 'default' });
 import weatherVariables from '../assets/weather_variables.json';
-import { fetchInitTimeRange, generateInitTimes6h } from '../util.js';
+import { fetchInitTimeRange, generateInitTimes6h, formatLocal, formatUTC } from '../util.js';
 
 function buildColormapIndex() {
     /** @type {Record<string, Set<string>>} */
@@ -35,18 +35,21 @@ export class MenuBar {
         const {
             mount = null,
             initialState = {},
-            onChange = null
+            onChange = null,
+            onToggle = null
         } = options;
 
         this.mountTarget = mount;
         this.onChange = typeof onChange === 'function' ? onChange : null;
+        this.onToggle = typeof onToggle === 'function' ? onToggle : null;
         this.state = {
             initData: initialState.initData || '00Z',
             frequency: initialState.frequency || '5d',
             variable: initialState.variable || 'temperature',
             colormapGenre: initialState.colormapGenre || 'sequential',
             colormap: initialState.colormap || 'thermal',
-            unit: initialState.unit || null
+            unit: initialState.unit || null,
+            showLocalTime: initialState.showLocalTime || false
         };
 
         this.root = null;
@@ -61,6 +64,7 @@ export class MenuBar {
         this.advancedOpen = false;
         this.advancedSection = null;
         this.advancedToggleBtn = null;
+        this.initDates = null; // Cache for Init Dates
         this._handleEsc = this._handleEsc.bind(this);
         this._handleGlobalClick = this._handleGlobalClick.bind(this);
     }
@@ -80,7 +84,7 @@ export class MenuBar {
         const toggle = document.createElement('button');
         toggle.className = 'pf-menubar-open';
         toggle.setAttribute('aria-label', 'Open menu');
-        toggle.textContent = '▸';
+        toggle.textContent = '☁';
 
         const sidebar = document.createElement('div');
         sidebar.className = 'pf-menubar-sidebar';
@@ -89,6 +93,7 @@ export class MenuBar {
         this.root = root;
         this.wrap = wrap;
         this.sidebar = sidebar;
+        this.initDateSelect = null;
 
         // Sections
         sidebar.appendChild(this._createInitDatePanel());
@@ -131,6 +136,7 @@ export class MenuBar {
         toggle.addEventListener('click', () => {
             this.wrap.classList.remove('hidden');
             toggle.style.display = 'none';
+            if (this.onToggle) this.onToggle(true);
         });
 
         wrap.appendChild(sidebar);
@@ -145,6 +151,7 @@ export class MenuBar {
         close.addEventListener('click', () => {
             this.wrap.classList.add('hidden');
             toggle.style.display = '';
+            if (this.onToggle) this.onToggle(false);
         });
         sidebar.appendChild(close);
         host.appendChild(root);
@@ -196,24 +203,30 @@ export class MenuBar {
     }
 
     _handleEsc(e) {
-        if (e.key === 'Escape' && this.wrap) this.wrap.classList.add('hidden');
-    }
-
-    _handleGlobalClick(e) {
-        // On mobile, clicking outside the menubar should hide it
-        try {
-            const isMobile = (typeof window !== 'undefined') && (
-                window.matchMedia('(max-width: 768px)').matches ||
-                window.matchMedia('(pointer: coarse)').matches
-            );
-            if (!isMobile) return;
-            if (!this.root || !this.wrap) return;
-            const target = e.target;
-            if (!(target instanceof Element)) return;
-            if (target.closest('.pf-menubar-sidebar') || target.closest('.pf-menubar-open')) return;
+        if (e.key === 'Escape' && this.wrap && !this.wrap.classList.contains('hidden')) {
             this.wrap.classList.add('hidden');
             const openBtn = this.root.querySelector('.pf-menubar-open');
             if (openBtn) openBtn.style.display = '';
+            if (this.onToggle) this.onToggle(false);
+        }
+    }
+
+    _handleGlobalClick(e) {
+        // Clicking outside the menubar should hide it (Desktop & Mobile)
+        try {
+            if (!this.root || !this.wrap) return;
+            const target = e.target;
+            if (!(target instanceof Element)) return;
+            // If click is inside menu or on toggle button, ignore
+            if (target.closest('.pf-menubar-sidebar') || target.closest('.pf-menubar-open')) return;
+            
+            // If menu is open, close it
+            if (!this.wrap.classList.contains('hidden')) {
+                this.wrap.classList.add('hidden');
+                const openBtn = this.root.querySelector('.pf-menubar-open');
+                if (openBtn) openBtn.style.display = '';
+                if (this.onToggle) this.onToggle(false);
+            }
         } catch {}
     }
 
@@ -253,6 +266,7 @@ export class MenuBar {
         const select = document.createElement('select');
         select.className = 'pf-menubar-select';
         select.disabled = true;
+        this.initDateSelect = select;
 
         const placeholder = document.createElement('option');
         placeholder.value = '';
@@ -267,30 +281,8 @@ export class MenuBar {
             try {
                 const [first, latest] = await fetchInitTimeRange();
                 const datesAsc = generateInitTimes6h(first, latest);
-                const dates = datesAsc.slice().reverse(); // latest first
-
-                const formatLocal = (date) => {
-                    const y = date.getFullYear();
-                    const m = String(date.getMonth() + 1).padStart(2, '0');
-                    const d = String(date.getDate()).padStart(2, '0');
-                    const hh = String(date.getHours()).padStart(2, '0');
-                    const mm = String(date.getMinutes()).padStart(2, '0');
-                    const tzPart = new Intl.DateTimeFormat(undefined, { timeZoneName: 'short' }).formatToParts(date).find(p => p.type === 'timeZoneName');
-                    const tz = tzPart ? tzPart.value : 'local';
-                    return `${y}-${m}-${d} ${hh}:${mm} ${tz}`;
-                };
-
-                select.innerHTML = '';
-                for (const d of dates) {
-                    const iso = new Date(d.getTime()).toISOString().replace('.000Z', 'Z');
-                    const label = formatLocal(d);
-                    const opt = document.createElement('option');
-                    opt.value = iso; // keep value in UTC ISO for consistency
-                    opt.textContent = label; // display in local time
-                    if (!this.state.initData) this.state.initData = iso;
-                    if (this.state.initData === iso) opt.selected = true;
-                    select.appendChild(opt);
-                }
+                this.initDates = datesAsc.slice().reverse(); // latest first
+                this._populateInitDateSelect();
                 select.disabled = false;
             } catch (err) {
                 select.innerHTML = '';
@@ -299,7 +291,6 @@ export class MenuBar {
                 opt.textContent = 'Error loading init times';
                 opt.selected = true;
                 select.appendChild(opt);
-                // Respect user rule: raise errors, no silent fallbacks
                 throw err;
             }
         })();
@@ -308,6 +299,62 @@ export class MenuBar {
             this.setState({ initData: select.value });
         });
 
+        return panel;
+    }
+
+    _populateInitDateSelect() {
+        if (!this.initDateSelect || !this.initDates) return;
+        const select = this.initDateSelect;
+        
+        // Save selection if possible, or use state
+        const currentVal = this.state.initData;
+        select.innerHTML = '';
+        
+        for (const d of this.initDates) {
+            const iso = new Date(d.getTime()).toISOString().replace('.000Z', 'Z');
+            const label = this.state.showLocalTime ? formatLocal(d) : formatUTC(d);
+            const opt = document.createElement('option');
+            opt.value = iso; 
+            opt.textContent = label;
+            if (!this.state.initData) this.state.initData = iso;
+            if (currentVal === iso) opt.selected = true;
+            select.appendChild(opt);
+        }
+    }
+
+    _createLocalTimePanel() {
+        const { panel } = this._createPanelContainer('Time Display');
+        
+        const row = document.createElement('div');
+        row.style.display = 'flex';
+        row.style.alignItems = 'center';
+        row.style.gap = '8px';
+        
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = this.state.showLocalTime;
+        checkbox.style.cursor = 'pointer';
+        
+        const label = document.createElement('label');
+        label.textContent = 'Show Local Time';
+        label.style.color = '#fff';
+        label.style.fontSize = '14px';
+        label.style.cursor = 'pointer';
+        
+        const onChange = () => {
+            this.setState({ showLocalTime: checkbox.checked });
+            this._populateInitDateSelect();
+        };
+        
+        checkbox.addEventListener('change', onChange);
+        label.addEventListener('click', () => {
+            checkbox.checked = !checkbox.checked;
+            onChange();
+        });
+        
+        row.appendChild(checkbox);
+        row.appendChild(label);
+        panel.appendChild(row);
         return panel;
     }
 
@@ -686,6 +733,7 @@ export class MenuBar {
     _createAdvancedSection() {
         const container = document.createElement('div');
         // Append advanced panels inside this container
+        container.appendChild(this._createLocalTimePanel()); // Added Local Time Toggle
         container.appendChild(this._createUnitPanel());
         container.appendChild(this._createGenrePanel());
         container.appendChild(this._createColormapPanel());
