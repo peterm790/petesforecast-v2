@@ -17,6 +17,7 @@ import weatherVariables from './assets/weather_variables.json';
 import { createLegendManager } from './controls/legend.js';
 import { createTooltipManager } from './controls/tooltip.js';
 import { RoutingControl } from './controls/routing.js';
+import { startTour } from './controls/tour.js';
 import './index.css'; // Import global CSS for location dot
 
 // Unit conversion helpers (affine y = a*x + b) derived from weather_variables.json per variable
@@ -77,6 +78,21 @@ routingControl.onRouteLoaded((leadHours) => {
         timeSlider.setLeadHour(leadHours);
     }
 });
+
+// Create Help Button
+const helpBtn = document.createElement('div');
+helpBtn.className = 'pf-help-btn';
+helpBtn.textContent = '?';
+helpBtn.onclick = () => startTour();
+document.body.appendChild(helpBtn);
+
+// Check if first visit
+if (!localStorage.getItem('pf-tour-shown')) {
+    setTimeout(() => {
+        startTour();
+        localStorage.setItem('pf-tour-shown', 'true');
+    }, 1000); // Small delay to let UI settle
+}
 
 // deck.gl overlay (lazy); created on first render
 let deckOverlay = null;

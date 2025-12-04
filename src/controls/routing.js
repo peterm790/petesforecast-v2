@@ -113,6 +113,7 @@ export class RoutingControl {
         
         const openBtn = document.createElement('div');
         openBtn.className = 'pf-routing-open';
+        openBtn.id = 'pf-routing-open-btn';
         openBtn.innerHTML = '☡'; // Or some other icon
         openBtn.onclick = () => {
             wrap.classList.remove('hidden');
@@ -252,6 +253,7 @@ export class RoutingControl {
     _createLocationPanel(title, prefix) {
         const panel = document.createElement('div');
         panel.className = 'pf-routing-panel';
+        panel.id = `pf-routing-${prefix}-panel`;
 
         const label = document.createElement('div');
         label.className = 'pf-routing-label';
@@ -297,6 +299,7 @@ export class RoutingControl {
     _createBBoxPanel() {
         const panel = document.createElement('div');
         panel.className = 'pf-routing-panel';
+        panel.id = 'pf-routing-bbox-panel';
 
         const label = document.createElement('div');
         label.className = 'pf-routing-label';
@@ -363,6 +366,7 @@ export class RoutingControl {
     _createTimePanel() {
         const panel = document.createElement('div');
         panel.className = 'pf-routing-panel';
+        panel.id = 'pf-routing-time-panel';
 
         const label = document.createElement('div');
         label.className = 'pf-routing-label';
@@ -383,6 +387,7 @@ export class RoutingControl {
         });
 
         this.timeSelect = select;
+        select.id = 'pf-routing-time-select';
         panel.appendChild(select);
         return panel;
     }

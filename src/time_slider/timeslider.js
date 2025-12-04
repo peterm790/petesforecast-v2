@@ -250,8 +250,8 @@ export class TimeSlider {
         this.slider.max = String(maxIndex);
         this.slider.min = '0';
         this.slider.step = '1';
-        this.minLabel.textContent = `Hour ${this.availableHours[0] || 1}`;
-        this.maxLabel.textContent = `Hour ${this.availableHours[maxIndex]}`;
+        this.minLabel.textContent = `${this.availableHours[0] || 1}`;
+        this.maxLabel.textContent = `${this.availableHours[maxIndex]}`;
         this._updateTrackProgress();
     }
     

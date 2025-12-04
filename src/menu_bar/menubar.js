@@ -83,6 +83,7 @@ export class MenuBar {
 
         const toggle = document.createElement('button');
         toggle.className = 'pf-menubar-open';
+        toggle.id = 'pf-menubar-open-btn';
         toggle.setAttribute('aria-label', 'Open menu');
         toggle.textContent = '☁';
 
@@ -105,6 +106,7 @@ export class MenuBar {
         // Advanced toggle button
         const advToggle = document.createElement('button');
         advToggle.className = 'pf-menubar-select pf-menubar-more';
+        advToggle.id = 'pf-menubar-more-btn';
         advToggle.textContent = 'More ▾';
         advToggle.setAttribute('aria-label', 'Show more options');
         advToggle.setAttribute('aria-expanded', 'false');
@@ -220,6 +222,9 @@ export class MenuBar {
             // If click is inside menu or on toggle button, ignore
             if (target.closest('.pf-menubar-sidebar') || target.closest('.pf-menubar-open')) return;
             
+            // Ignore clicks inside the driver.js tour popover or overlay
+            if (target.closest('.driver-popover') || target.closest('.driver-active-element')) return;
+
             // If menu is open, close it
             if (!this.wrap.classList.contains('hidden')) {
                 this.wrap.classList.add('hidden');
@@ -324,6 +329,7 @@ export class MenuBar {
 
     _createLocalTimePanel() {
         const { panel } = this._createPanelContainer('Time Display');
+        panel.id = 'pf-menubar-localtime-panel'; // For tour highlighting
         
         const row = document.createElement('div');
         row.style.display = 'flex';
@@ -360,6 +366,7 @@ export class MenuBar {
 
     _createFrequencyPanel() {
         const { panel } = this._createPanelContainer('Frequency');
+        panel.id = 'pf-menubar-frequency';
         const select = document.createElement('select');
         select.className = 'pf-menubar-select';
         const opts = [
@@ -449,6 +456,7 @@ export class MenuBar {
 
     _createColormapPanel() {
         const { panel } = this._createPanelContainer('Colormap');
+        panel.id = 'pf-menubar-colormap';
         const select = document.createElement('select');
         select.className = 'pf-menubar-select';
         this.colormapSelect = select;
@@ -461,6 +469,7 @@ export class MenuBar {
 
     _createRangePanel() {
         const { panel } = this._createPanelContainer('Data Range');
+        panel.id = 'pf-menubar-range';
         const title = document.createElement('div');
         title.className = 'pf-menubar-range-title';
         title.textContent = this._rangeTitleText();

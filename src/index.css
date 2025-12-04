@@ -113,3 +113,31 @@ body {
   white-space: pre-wrap; /* Allow coordinates to wrap if needed */
   line-height: 1.4;
 }
+
+.pf-help-btn {
+  position: fixed;
+  bottom: clamp(16px, 3vh, 24px);
+  right: clamp(16px, 3vh, 24px);
+  width: 1.8rem;
+  height: 1.8rem;
+  border-radius: 9999px;
+  background: rgba(20, 25, 40, 0.8);
+  border: 1px solid rgba(255,255,255,0.35);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 1000;
+  backdrop-filter: blur(6px);
+  transition: transform 0.2s, background 0.2s, box-shadow 0.15s ease;
+  box-shadow: 0 6px 14px rgba(0,0,0,0.28);
+}
+.pf-help-btn:hover {
+  transform: scale(1.05);
+  background: rgba(20, 25, 40, 0.95);
+  border-color: rgba(255,255,255,0.4);
+  box-shadow: 0 8px 18px rgba(0,0,0,0.32);
+}
