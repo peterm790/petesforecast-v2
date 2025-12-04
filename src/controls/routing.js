@@ -223,15 +223,16 @@ export class RoutingControl {
         
         resPanel.appendChild(table);
         resultView.appendChild(resPanel);
-        sidebar.appendChild(resultView);
 
-        // Clear Button (Shared)
+        // Clear Button (Only visible in Result View)
         const clearBtn = document.createElement('button');
         clearBtn.className = 'pf-routing-button';
-        clearBtn.textContent = 'Clear All';
+        clearBtn.textContent = 'Clear';
         clearBtn.style.marginTop = '5px';
         clearBtn.onclick = () => this.clearAll();
-        sidebar.appendChild(clearBtn);
+        resultView.appendChild(clearBtn);
+
+        sidebar.appendChild(resultView);
 
         wrap.appendChild(sidebar);
         container.appendChild(openBtn);
@@ -1071,14 +1072,42 @@ export class RoutingControl {
             freq: this.state.frequency
         });
 
-        // Show loading state
+        // Show loading state with cancel button
         this.loadingOverlay.show(1);
         if (this.loadingOverlay.progressEl) {
             this.loadingOverlay.progressEl.textContent = "Calculating Route...";
+            
+            // Append Cancel button if not exists
+            if (!this.loadingOverlay.root.querySelector('.pf-loading-cancel')) {
+                const cancelBtn = document.createElement('button');
+                cancelBtn.className = 'pf-loading-cancel pf-routing-button';
+                cancelBtn.textContent = 'Cancel';
+                cancelBtn.style.marginTop = '10px';
+                cancelBtn.style.width = 'auto';
+                cancelBtn.style.padding = '4px 12px';
+                cancelBtn.style.fontSize = '12px';
+                cancelBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    if (this.abortController) {
+                        this.abortController.abort();
+                        this.abortController = null;
+                    }
+                };
+                // Insert into the box which is progressEl's parent
+                this.loadingOverlay.progressEl.parentNode.appendChild(cancelBtn);
+            }
         }
 
+        this.abortController = new AbortController();
+
         try {
-            const response = await fetch(url + "?" + params.toString(), { method: 'GET' });
+            const response = await fetch(url + "?" + params.toString(), { 
+                method: 'GET',
+                signal: this.abortController.signal 
+            });
+            
+            this.abortController = null;
+
             if (!response.ok) {
                 throw new Error(`API Error: ${response.status} ${response.statusText}`);
             }
@@ -1120,10 +1149,17 @@ export class RoutingControl {
             }
 
         } catch (err) {
-            console.error("Route API Failed:", err);
-            alert("Routing failed: " + err.message);
+            if (err.name === 'AbortError') {
+                console.log('Route calculation cancelled');
+            } else {
+                console.error("Route API Failed:", err);
+                alert("Routing failed: " + err.message);
+            }
         } finally {
             this.loadingOverlay.hide();
+            // Remove cancel button on cleanup to keep overlay clean for other uses
+            const btn = this.loadingOverlay.root.querySelector('.pf-loading-cancel');
+            if (btn) btn.remove();
         }
     }
 

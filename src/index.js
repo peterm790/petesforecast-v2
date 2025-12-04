@@ -344,7 +344,8 @@ async function renderFromCache(state, leadHours) {
     // Update legend control with latest palette and unit
     try {
         const unit = (typeof state.unit === 'string') ? state.unit : (def && typeof def.unit === 'string' ? def.unit : '');
-        await legendManager.updateConfig({ title: state.variable, unitFormat: { unit }, palette });
+        const title = (def && def.commonName) ? def.commonName : state.variable;
+        await legendManager.updateConfig({ title, unitFormat: { unit }, palette });
     } catch (err) {
         console.error('Legend update failed:', err);
     }

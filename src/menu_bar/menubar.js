@@ -603,9 +603,10 @@ export class MenuBar {
         const vars = this._getVariables();
         this.variableSelect.innerHTML = '';
         for (const v of vars) {
+            const def = weatherVariables[v];
             const opt = document.createElement('option');
             opt.value = v;
-            opt.textContent = v;
+            opt.textContent = (def && def.commonName) ? def.commonName : v;
             if (this.state.variable === v) opt.selected = true;
             this.variableSelect.appendChild(opt);
         }
@@ -685,7 +686,8 @@ export class MenuBar {
         const def = weatherVariables[this.state.variable];
         const unitStr = (this.state.unit || (def && (def.defaultUnit || def.unit))) || '';
         const unit = unitStr ? ` (${unitStr})` : '';
-        return `${this.state.variable}${unit}`;
+        const name = (def && def.commonName) ? def.commonName : this.state.variable;
+        return `${name}${unit}`;
     }
 
     _applyVariableUnitDefault() {
