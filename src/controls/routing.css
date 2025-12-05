@@ -173,9 +173,20 @@
   /* =======================
      CONTEXT MENU
      ======================= */
+  /* The popup container override */
+  .pf-context-popup .mapboxgl-popup-content {
+    background: transparent !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+  .pf-context-popup .mapboxgl-popup-tip {
+    display: none;
+  }
+
   .pf-context-menu {
-    position: absolute;
-    z-index: 2000;
+    /* Position is now handled by Mapbox Popup, so we remove fixed/absolute */
+    /* position: absolute; */
     background: rgba(20, 25, 40, 0.95);
     border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 8px;
@@ -183,7 +194,7 @@
     padding: 4px 0;
     min-width: 140px;
     box-shadow: 0 6px 16px rgba(0,0,0,0.6);
-    display: none; /* Hidden by default */
+    display: none; /* Hidden by default, shown via JS */
   }
   
   .pf-context-menu-item {

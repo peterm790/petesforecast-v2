@@ -13,7 +13,8 @@ export class RoutingControl {
             bbox: null,   // [minLon, minLat, maxLon, maxLat]
             leadTimeStart: 0, // Default start lead time (hours)
             initTimeIndex: -1, // Default to latest
-            frequency: '1hr' // Default API frequency
+            frequency: '1hr', // Default API frequency
+            polar_file: 'volvo70'
         };
         this.showLocalTime = false;
         this.routeData = null; // Store API response for time lookup
@@ -35,7 +36,8 @@ export class RoutingControl {
         this.timeSelect = null;
         
         // Context Menu
-        this.contextMenu = null;
+        this.contextMenuElement = null;
+        this.contextMenuPopup = null;
         this.contextMenuPos = null; // [lng, lat]
 
         this._onMapRightClick = this._onMapRightClick.bind(this);
@@ -57,6 +59,10 @@ export class RoutingControl {
 
     onRouteLoaded(callback) {
         this.onRouteLoadedHandler = callback;
+    }
+
+    isContextMenuActive() {
+        return this._justOpenedContextMenu || (this.contextMenuPopup && this.contextMenuPopup.isOpen());
     }
 
     mount(target) {
@@ -83,10 +89,11 @@ export class RoutingControl {
             this.container.remove();
             this.container = null;
         }
-        if (this.contextMenu) {
-            this.contextMenu.remove();
-            this.contextMenu = null;
+        if (this.contextMenuPopup) {
+            this.contextMenuPopup.remove();
+            this.contextMenuPopup = null;
         }
+        this.contextMenuElement = null;
         this._removeMapLayers();
         this._removeMarkers();
         this.map.off('contextmenu', this._onMapRightClick);
@@ -155,6 +162,9 @@ export class RoutingControl {
 
         // Start Time Panel
         formView.appendChild(this._createTimePanel());
+
+        // Polar File Panel
+        formView.appendChild(this._createPolarPanel());
 
         // Run Route Button
         const runBtn = document.createElement('button');
@@ -392,6 +402,75 @@ export class RoutingControl {
         return panel;
     }
 
+    _createPolarPanel() {
+        const panel = document.createElement('div');
+        panel.className = 'pf-routing-panel';
+        panel.id = 'pf-routing-polar-panel';
+
+        const label = document.createElement('div');
+        label.className = 'pf-routing-label';
+        label.textContent = 'Boat Polar';
+        panel.appendChild(label);
+
+        const select = document.createElement('select');
+        select.className = 'pf-routing-input';
+        select.style.cursor = 'pointer';
+        select.id = 'pf-routing-polar-select';
+
+        const options = [
+            "Akilaria40_rc2", "Alberg35", "Alden52", "Amel_54", "Amel_55", "Amel_64", "Amel_euros41", "Amel_kirk", 
+            "Amel_maramu", "Amel_sharki", "Amel_supermaramu2000", "Bavaria32", "Bavaria33", "Bavaria34", "Bavaria38", 
+            "Bavaria44", "Bavaria50", "Beneteau375", "Beneteau421", "Beowulf78", "BlockIsland40", "BountyII", 
+            "Breehorn37", "C_C34", "C_C372", "C_C402", "C_C44", "Cal2-46", "Cal239", "Cal36", "Cal40", "Catalina36", 
+            "Catamaran38", "Catamaran54", "Cheoy_Lee44", "Class40", "Class40v2", "Colombia43", "Colombia50", 
+            "Contessa33", "Crealock34", "Deerfoot2_62", "Deerfoot62", "Deerfoot64K", "Deerfoot_74", "Dehler29", 
+            "Dehler32", "Dehler33", "Dehler34", "Dehler35", "Dehler36", "Dehler38", "Dehler41", "Dehler44", 
+            "Dragonfly28", "Dufour24", "Dufour27", "Dufour34", "Dufour34_1974", "Dufour4800", "Dufour485", 
+            "Dufour_Sylphe", "Elan350", "Elan37", "Elan450", "Endeavor40", "Erickson29", "Etap32i", "Evasion32", 
+            "Evasion34", "Express27", "Express37", "Farr36od", "Farr39CR", "Farr40", "Figaro2", "Figaro_1", 
+            "First210", "First21_7", "First24", "First25_7", "First26", "First27_7", "First29", "First30jk", 
+            "First310s", "First31_7", "First325gte", "First32s5", "First34_7", "First36_7", "First40_7", "First45", 
+            "FirstClass10", "Freedom44CB", "Gibsea442", "Gladiateur", "GrandSurprise", "Grandsoleil341", 
+            "Grandsoleil37", "Grandsoleil40", "Grandsoleil42", "Grandsoleil43", "Grandsoleil45", "Grandsoleil46", 
+            "Gulfstar50", "Hallberg-rassy310", "Hallberg-rassy342", "Hallberg-rassy372", "Hallberg-rassy40", 
+            "Hallberg-rassy412", "Hallberg-rassy43mklll", "Hallberg-rassy48mkll", "Hallberg-rassy55", 
+            "Hallberg-rassy64", "Hanse345", "Hanse400", "Hinckley50", "Hunter375", "Hylas54", "ImocaOpen60", 
+            "Irwin40", "Irwin54", "Islander36", "J105", "J109", "J120", "J122", "J130", "J133", "J34C", "J40", 
+            "Jeanneau41", "Jod35", "Jpk1010", "Jpk960", "Lagoon380", "Landmark43", "Little_Hrb50", "Little_Hrb63", 
+            "Little_Hrb_48", "Maxi_multi_2013", "Maxus21", "Melody", "Mini_650", "Morgan41", "Multi50", "Mumm30", 
+            "Mumm_30", "Muscadet", "Nacira650", "Najad440", "Navy44", "Newport41", "Norseman447", "Oceanis31", 
+            "Oceanis34", "Oceanis351", "Oceanis37", "Passport41", "Pearson33", "Peterson44", "Pogo1050", "Pogo40", 
+            "Pogo40_s2", "Pogo650", "Pogo850", "RM1200", "Ranger37", "Sabre362", "Sabre402", "Santacruz50", 
+            "Santana35", "Sense46", "Shannon38", "Shock35", "Small_polar", "Sundeer64K", "Sunfast32", "Sunfast3200", 
+            "Sunfast32i", "Sunfast36", "Sunfast3600", "Sunfast39tq", "Sunfast40", "Sunkiss45", "Sunlegend41", 
+            "Sunmagic44", "Sunodyssey40", "Sunshine38", "Swan37", "Swan38", "Swan39", "Swan391", "Swan40", 
+            "Swan44", "Swan45", "Swan46", "Swan46CB", "Swan60", "Symphonie", "Tartan10", "Tartan37", "Tartan40", 
+            "Tartan41", "Tayana37", "Tayana42", "Tayana52", "The_Race", "Valiant40", "Valiant47", "VandeStadt_Zeehond", 
+            "VolvoOcean65", "X332", "X332sport", "X34", "X35od", "X37", "X40", "X402", "X40carb", "Xc42", "Xc45", 
+            "Xc50", "Xp33", "Xp38", "Xp44", "Yankee38", "j80", "volvo70", "Argonaut_Samoa_47"
+        ];
+        
+        options.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+
+        options.forEach(optVal => {
+            const opt = document.createElement('option');
+            opt.value = optVal;
+            opt.textContent = optVal;
+            // Select default
+            if (optVal === 'volvo70') {
+                opt.selected = true;
+            }
+            select.appendChild(opt);
+        });
+        
+        select.addEventListener('change', () => {
+            this.state.polar_file = select.value;
+        });
+
+        panel.appendChild(select);
+        return panel;
+    }
+
     // Set init time index for API (e.g. -1 for latest)
     setInitTimeIndex(idx) {
         this.state.initTimeIndex = idx;
@@ -484,8 +563,8 @@ export class RoutingControl {
 
         menu.appendChild(itemStart);
         menu.appendChild(itemEnd);
-        document.body.appendChild(menu);
-        this.contextMenu = menu;
+        // Do not append to body, used in Popup
+        this.contextMenuElement = menu;
     }
 
     _onMapRightClick(e) {
@@ -563,14 +642,21 @@ export class RoutingControl {
     _showContextMenu(e) {
         this.contextMenuPos = [e.lngLat.lng, e.lngLat.lat];
         
-        const { x, y } = e.point;
-        // Add offset for canvas position if needed, but e.point is relative to container usually
-        // We need screen coordinates for the fixed div, or relative to map container
-        const mapRect = this.map.getContainer().getBoundingClientRect();
-        
-        this.contextMenu.style.display = 'block';
-        this.contextMenu.style.left = `${mapRect.left + x}px`;
-        this.contextMenu.style.top = `${mapRect.top + y}px`;
+        // Remove existing popup if any
+        this._hideContextMenu();
+
+        this.contextMenuElement.style.display = 'block'; // Ensure visible inside popup
+
+        this.contextMenuPopup = new mapboxgl.Popup({
+            closeButton: false,
+            closeOnClick: false,
+            className: 'pf-context-popup',
+            maxWidth: 'none',
+            offset: 5
+        })
+        .setLngLat(e.lngLat)
+        .setDOMContent(this.contextMenuElement)
+        .addTo(this.map);
         
         // Prevent immediate closing by subsequent click event on touch devices
         this._justOpenedContextMenu = true;
@@ -578,7 +664,10 @@ export class RoutingControl {
     }
 
     _hideContextMenu() {
-        if (this.contextMenu) this.contextMenu.style.display = 'none';
+        if (this.contextMenuPopup) {
+            this.contextMenuPopup.remove();
+            this.contextMenuPopup = null;
+        }
     }
 
     _initMapLayers() {
@@ -1074,7 +1163,8 @@ export class RoutingControl {
             max_lon: this.state.bbox[2],
             init_time: this.state.initTimeIndex,
             lead_time_start: this.state.leadTimeStart,
-            freq: this.state.frequency
+            freq: this.state.frequency,
+            polar_file: this.state.polar_file
         });
 
         // Show loading state with cancel button

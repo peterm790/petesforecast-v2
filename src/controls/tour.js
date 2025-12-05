@@ -183,7 +183,16 @@ export function startTour() {
                 element: '#pf-routing-time-panel',
                 popover: {
                     title: 'Start Time',
-                    description: 'Choose when the route should start relative to the forecast initialization.',
+                    description: 'Choose when the routing should start.',
+                    side: 'right',
+                    align: 'start'
+                }
+            },
+            {
+                element: '#pf-routing-polar-panel',
+                popover: {
+                    title: 'Boat Selection',
+                    description: 'Select your boat type (polar) to calculate the route based on specific performance characteristics.',
                     side: 'right',
                     align: 'start'
                 }

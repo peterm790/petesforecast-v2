@@ -715,6 +715,10 @@ map.on('move', () => {
 
 // Click-to-pin tooltip
 map.on('click', (e) => {
+    // Avoid showing tooltip if routing context menu was just opened (long press or right click)
+    if (routingControl && typeof routingControl.isContextMenuActive === 'function' && routingControl.isContextMenuActive()) {
+        return;
+    }
     try {
         updateTooltipUnitFormat(menu.getState().unit);
         updateTooltipAtLngLat(e.lngLat.lng, e.lngLat.lat);
