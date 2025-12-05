@@ -13,6 +13,14 @@
     user-select: none;
     -webkit-user-select: none;
     touch-action: none;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 12px;
+    pointer-events: none; /* Let clicks pass through gaps */
+  }
+  .pf-menubar-container > * {
+    pointer-events: auto; /* Re-enable pointer events for children */
   }
   .pf-menubar-container.hidden { display: none; }
   

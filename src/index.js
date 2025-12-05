@@ -79,12 +79,8 @@ routingControl.onRouteLoaded((leadHours) => {
     }
 });
 
-// Create Help Button
-const helpBtn = document.createElement('div');
-helpBtn.className = 'pf-help-btn';
-helpBtn.textContent = '?';
-helpBtn.onclick = () => startTour();
-document.body.appendChild(helpBtn);
+// Help Button creation moved to after MenuBar mount
+
 
 // Check if first visit
 if (!localStorage.getItem('pf-tour-shown')) {
@@ -604,6 +600,17 @@ const menu = new MenuBar({
     }
 });
 menu.mount(document.body);
+
+// Create Help Button and append to MenuBar container
+const helpBtn = document.createElement('div');
+helpBtn.className = 'pf-help-btn';
+helpBtn.textContent = '?';
+helpBtn.onclick = () => startTour();
+if (menu.root) {
+    menu.root.appendChild(helpBtn);
+} else {
+    document.body.appendChild(helpBtn);
+}
 
 // Initialize slider from current menu state
 timeSlider.setFromMenuState(menu.getState());

@@ -115,9 +115,7 @@ body {
 }
 
 .pf-help-btn {
-  position: fixed;
-  bottom: clamp(16px, 3vh, 24px);
-  right: clamp(16px, 3vh, 24px);
+  position: relative; /* Changed from fixed to relative/static for flex layout */
   width: 1.8rem;
   height: 1.8rem;
   border-radius: 9999px;

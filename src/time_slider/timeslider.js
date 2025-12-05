@@ -297,11 +297,6 @@ export class TimeSlider {
             const spinner = document.createElement('span');
             spinner.className = 'pf-timeslider-spinner';
             this.label.appendChild(spinner);
-            
-            const progress = document.createElement('span');
-            progress.className = 'pf-timeslider-loading-text';
-            progress.textContent = `${this.bgLoading.done}/${this.bgLoading.total}`;
-            this.label.appendChild(progress);
         }
     }
 
