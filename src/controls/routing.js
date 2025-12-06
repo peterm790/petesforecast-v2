@@ -727,6 +727,30 @@ export class RoutingControl {
             filter: ['==', '$type', 'Polygon']
         });
 
+        // -- Initial Route Source & Layer --
+        if (!this.map.getSource('pf-initial-route-source')) {
+            this.map.addSource('pf-initial-route-source', {
+                type: 'geojson',
+                data: { type: 'FeatureCollection', features: [] }
+            });
+        }
+        if (!this.map.getLayer('pf-initial-route-line')) {
+            this.map.addLayer({
+                id: 'pf-initial-route-line',
+                type: 'line',
+                source: 'pf-initial-route-source',
+                layout: {
+                    'line-join': 'round',
+                    'line-cap': 'round'
+                },
+                paint: {
+                    'line-color': '#0077ff', // Blue for Initial
+                    'line-width': 3,
+                    'line-opacity': 0.7
+                }
+            });
+        }
+
         // -- Optimized Route Source & Layer --
         if (!this.map.getSource('pf-result-source')) {
             this.map.addSource('pf-result-source', {
@@ -1193,6 +1217,7 @@ export class RoutingControl {
         }
 
         this.abortController = new AbortController();
+        this._hasReceivedInitial = false;
 
         try {
             const response = await fetch(url + "?" + params.toString(), { 
@@ -1260,28 +1285,44 @@ export class RoutingControl {
             const steps = msg.step !== undefined ? `Step: ${msg.step}` : '';
             const dist = msg.dist !== undefined ? `Dist: ${parseFloat(msg.dist).toFixed(1)} nm` : '';
             const sep = (steps && dist) ? ' | ' : '';
-            const text = `Calculating... ${steps}${sep}${dist}`;
+            const prefix = this._hasReceivedInitial ? "Optimising..." : "Calculating...";
+            const text = `${prefix} ${steps}${sep}${dist}`;
             this.loadingOverlay.progressEl.textContent = text;
-            // console.log(text); // Uncomment to debug stream timing
+        } else if (msg.type === 'initial') {
+            this._hasReceivedInitial = true;
+            this.loadingOverlay.progressEl.textContent = "Optimising...";
+            this._drawRoute(msg.data, true); // true = isInitial
         } else if (msg.type === 'result') {
-            this._drawRoute(msg.data);
+            this._drawRoute(msg.data, false); // false = final result
         }
     }
 
-    _drawRoute(data) {
+    _drawRoute(data, isInitial = false) {
         // Process and draw route
-        if (Array.isArray(data) && data.length > 0) {
+        // Data can be [[lat, lon], ...] (initial) or [{lat, lon, ...}, ...] (result)
+        
+        let pointsArray = data;
+        // Validate array
+        if (!Array.isArray(pointsArray)) {
+             console.warn("Received invalid route data", data);
+             return;
+        }
+
+        if (pointsArray.length > 0) {
             
-            this.routeData = data; // Store FINAL route for time slider sync
+            if (!isInitial) {
+                this.routeData = pointsArray; // Store FINAL route for time slider sync
+            }
             
             // Extract coordinates: [lon, lat]
-            // Handle both object {lat, lon} and array [lat, lon] formats
-            const routeCoords = data.map(p => {
+            const routeCoords = pointsArray.map(p => {
                 let lat, lon;
                 if (Array.isArray(p)) {
+                    // Initial route comes as [lat, lon] arrays
                     lat = p[0];
                     lon = p[1];
                 } else {
+                    // Final route comes as objects with lat/lon properties
                     lat = p.lat;
                     lon = p.lon;
                 }
@@ -1292,11 +1333,13 @@ export class RoutingControl {
             const validCoords = routeCoords.filter(c => !isNaN(c[0]) && !isNaN(c[1]));
             
             if (validCoords.length === 0) {
-                console.warn("Received route data but found no valid coordinates", data[0]);
+                console.warn("Received route data but found no valid coordinates", pointsArray[0]);
                 return;
             }
 
-            const resultSource = this.map.getSource('pf-result-source');
+            // Choose source based on type
+            const sourceId = isInitial ? 'pf-initial-route-source' : 'pf-result-source';
+            const resultSource = this.map.getSource(sourceId);
             
             if (resultSource) {
                 resultSource.setData({
@@ -1312,13 +1355,22 @@ export class RoutingControl {
                 });
             }
             
-            // Switch to result view
-            this.formView.style.display = 'none';
-            this.resultView.style.display = 'flex';
-            
-            // Notify app to jump time slider to start
-            if (this.onRouteLoadedHandler) {
-                this.onRouteLoadedHandler(this.state.leadTimeStart);
+            // Only switch view and notify app if it's the final route
+            if (!isInitial) {
+                // Switch to result view
+                this.formView.style.display = 'none';
+                this.resultView.style.display = 'flex';
+                
+                // Clear the initial route line so only final remains
+                const initialSource = this.map.getSource('pf-initial-route-source');
+                if (initialSource) {
+                    initialSource.setData({ type: 'FeatureCollection', features: [] });
+                }
+
+                // Notify app to jump time slider to start
+                if (this.onRouteLoadedHandler) {
+                    this.onRouteLoadedHandler(this.state.leadTimeStart);
+                }
             }
         } else {
             console.warn("Received empty route data");
