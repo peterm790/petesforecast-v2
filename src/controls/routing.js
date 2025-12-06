@@ -686,7 +686,7 @@ export class RoutingControl {
             data: { type: 'FeatureCollection', features: [] }
         });
 
-        // Line Layer
+        // Line Layer (Great Circle)
         this.map.addLayer({
             id: 'pf-routing-line',
             type: 'line',
@@ -727,7 +727,7 @@ export class RoutingControl {
             filter: ['==', '$type', 'Polygon']
         });
 
-        // Optimal Route Layer (Result)
+        // -- Optimized Route Source & Layer --
         if (!this.map.getSource('pf-result-source')) {
             this.map.addSource('pf-result-source', {
                 type: 'geojson',
@@ -745,7 +745,7 @@ export class RoutingControl {
                     'line-cap': 'round'
                 },
                 paint: {
-                    'line-color': '#000000', // Black for Route
+                    'line-color': '#000000', // Black for Final Route
                     'line-width': 4
                 }
             });
@@ -1167,10 +1167,10 @@ export class RoutingControl {
             polar_file: this.state.polar_file
         });
 
-        // Show loading state with cancel button
+        // Show loading state
         this.loadingOverlay.show(1);
         if (this.loadingOverlay.progressEl) {
-            this.loadingOverlay.progressEl.textContent = "Calculating Route...";
+            this.loadingOverlay.progressEl.textContent = "Starting Routing...";
             
             // Append Cancel button if not exists
             if (!this.loadingOverlay.root.querySelector('.pf-loading-cancel')) {
@@ -1188,7 +1188,6 @@ export class RoutingControl {
                         this.abortController = null;
                     }
                 };
-                // Insert into the box which is progressEl's parent
                 this.loadingOverlay.progressEl.parentNode.appendChild(cancelBtn);
             }
         }
@@ -1201,47 +1200,45 @@ export class RoutingControl {
                 signal: this.abortController.signal 
             });
             
-            this.abortController = null;
-
             if (!response.ok) {
                 throw new Error(`API Error: ${response.status} ${response.statusText}`);
             }
-            
-            const data = await response.json();
-            
-            // Process and draw route
-            if (Array.isArray(data) && data.length > 0) {
-                this.routeData = data; // Store for time slider sync
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
                 
-                // Extract coordinates: [lon, lat]
-                const routeCoords = data.map(p => [p.lon, p.lat]);
-                
-                const resultSource = this.map.getSource('pf-result-source');
-                if (resultSource) {
-                    resultSource.setData({
-                        type: 'FeatureCollection',
-                        features: [{
-                            type: 'Feature',
-                            geometry: {
-                                type: 'LineString',
-                                coordinates: routeCoords
-                            },
-                            properties: {}
-                        }]
-                    });
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                // Keep the last partial line in the buffer
+                buffer = lines.pop(); 
+
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+                    try {
+                        const msg = JSON.parse(line);
+                        this._handleRouteMessage(msg);
+                    } catch (e) {
+                        console.error('JSON parse error:', e);
+                    }
                 }
-                
-                // Switch to result view
-                this.formView.style.display = 'none';
-                this.resultView.style.display = 'flex';
-                
-                // Notify app to jump time slider to start
-                if (this.onRouteLoadedHandler) {
-                    this.onRouteLoadedHandler(this.state.leadTimeStart);
-                }
-            } else {
-                alert("Route calculated but returned no data.");
             }
+            
+            // Process any remaining buffer
+            if (buffer.trim()) {
+                try {
+                    const msg = JSON.parse(buffer);
+                    this._handleRouteMessage(msg);
+                } catch (e) {
+                    console.error('Final JSON parse error:', e);
+                }
+            }
+
+            this.abortController = null;
 
         } catch (err) {
             if (err.name === 'AbortError') {
@@ -1252,18 +1249,85 @@ export class RoutingControl {
             }
         } finally {
             this.loadingOverlay.hide();
-            // Remove cancel button on cleanup to keep overlay clean for other uses
             const btn = this.loadingOverlay.root.querySelector('.pf-loading-cancel');
             if (btn) btn.remove();
+        }
+    }
+
+    _handleRouteMessage(msg) {
+        if (msg.type === 'progress') {
+            // Format: "Step: 5 | Dist: 120.5 nm"
+            const steps = msg.step !== undefined ? `Step: ${msg.step}` : '';
+            const dist = msg.dist !== undefined ? `Dist: ${parseFloat(msg.dist).toFixed(1)} nm` : '';
+            const sep = (steps && dist) ? ' | ' : '';
+            const text = `Calculating... ${steps}${sep}${dist}`;
+            this.loadingOverlay.progressEl.textContent = text;
+            // console.log(text); // Uncomment to debug stream timing
+        } else if (msg.type === 'result') {
+            this._drawRoute(msg.data);
+        }
+    }
+
+    _drawRoute(data) {
+        // Process and draw route
+        if (Array.isArray(data) && data.length > 0) {
+            
+            this.routeData = data; // Store FINAL route for time slider sync
+            
+            // Extract coordinates: [lon, lat]
+            // Handle both object {lat, lon} and array [lat, lon] formats
+            const routeCoords = data.map(p => {
+                let lat, lon;
+                if (Array.isArray(p)) {
+                    lat = p[0];
+                    lon = p[1];
+                } else {
+                    lat = p.lat;
+                    lon = p.lon;
+                }
+                return [lon, lat];
+            });
+            
+            // Validate coords
+            const validCoords = routeCoords.filter(c => !isNaN(c[0]) && !isNaN(c[1]));
+            
+            if (validCoords.length === 0) {
+                console.warn("Received route data but found no valid coordinates", data[0]);
+                return;
+            }
+
+            const resultSource = this.map.getSource('pf-result-source');
+            
+            if (resultSource) {
+                resultSource.setData({
+                    type: 'FeatureCollection',
+                    features: [{
+                        type: 'Feature',
+                        geometry: {
+                            type: 'LineString',
+                            coordinates: validCoords
+                        },
+                        properties: {}
+                    }]
+                });
+            }
+            
+            // Switch to result view
+            this.formView.style.display = 'none';
+            this.resultView.style.display = 'flex';
+            
+            // Notify app to jump time slider to start
+            if (this.onRouteLoadedHandler) {
+                this.onRouteLoadedHandler(this.state.leadTimeStart);
+            }
+        } else {
+            console.warn("Received empty route data");
         }
     }
 
     // --- Math Helpers ---
 
     _getGreatCircleCoords(start, end, numPoints = 100) {
-        // Simple spherical interpolation
-        // Or just use Turf.js if available? User didn't mention turf.
-        // I'll implement a simple one.
         
         const toRad = (d) => d * Math.PI / 180;
         const toDeg = (r) => r * 180 / Math.PI;
@@ -1300,7 +1364,9 @@ export class RoutingControl {
 
         for (const point of this.routeData) {
             // Ensure UTC parsing. Replace space with T and append Z if missing.
-            let timeStr = point.time.replace(' ', 'T');
+            if (!point.time) continue;
+            
+            let timeStr = String(point.time).replace(' ', 'T');
             if (!timeStr.endsWith('Z') && !timeStr.includes('+')) timeStr += 'Z';
             
             const ptTime = new Date(timeStr).getTime();
