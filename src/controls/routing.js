@@ -1281,12 +1281,12 @@ export class RoutingControl {
 
     _handleRouteMessage(msg) {
         if (msg.type === 'progress') {
-            // Format: "Step: 5 | Dist: 120.5 nm"
-            const steps = msg.step !== undefined ? `Step: ${msg.step}` : '';
-            const dist = msg.dist !== undefined ? `Dist: ${parseFloat(msg.dist).toFixed(1)} nm` : '';
-            const sep = (steps && dist) ? ' | ' : '';
+            // Format: "Step: 5 | Dist: 120.5 nm" -> "Step 5 - 120 nm to go"
+            const step = msg.step !== undefined ? `Step ${msg.step}` : '';
+            const dist = msg.dist !== undefined ? `${Math.round(parseFloat(msg.dist))} nm to go` : '';
+            const sep = (step && dist) ? ' - ' : '';
             const prefix = this._hasReceivedInitial ? "Optimising..." : "Calculating...";
-            const text = `${prefix} ${steps}${sep}${dist}`;
+            const text = `${prefix} ${step}${sep}${dist}`;
             this.loadingOverlay.progressEl.textContent = text;
         } else if (msg.type === 'initial') {
             this._hasReceivedInitial = true;
