@@ -56,6 +56,7 @@ export class RoutingControl {
         // Touch handling state
         this.longPressTimer = null;
         this.touchStartPoint = null;
+        this.initialMapCenter = null; // Track map center at start of long press
     }
 
     onRouteLoaded(callback) {
@@ -606,6 +607,13 @@ export class RoutingControl {
              this.touchStartPoint = e.point;
         }
 
+        // Store initial map center to detect map movement
+        const center = this.map.getCenter();
+        this.initialMapCenter = {
+            lng: center.lng,
+            lat: center.lat
+        };
+
         // Capture event data immediately
         const eventData = {
             lngLat: e.lngLat,
@@ -618,11 +626,13 @@ export class RoutingControl {
             // Long press detected
             this.longPressTimer = null;
             this._showContextMenu(eventData); 
-        }, 500); // 500ms for long press
+        }, 800); // 800ms for long press
     }
 
     _onPointerMove(e) {
         if (!this.longPressTimer || !this.touchStartPoint) return;
+        
+        // Check pointer movement in screen space
         const dist = Math.sqrt(
             Math.pow(e.point.x - this.touchStartPoint.x, 2) +
             Math.pow(e.point.y - this.touchStartPoint.y, 2)
@@ -630,6 +640,20 @@ export class RoutingControl {
         if (dist > 10) { // 10px threshold
             clearTimeout(this.longPressTimer);
             this.longPressTimer = null;
+            this.initialMapCenter = null;
+            return;
+        }
+        
+        // Check if map has moved (user is panning)
+        if (this.initialMapCenter) {
+            const currentCenter = this.map.getCenter();
+            const mapMoved = Math.abs(currentCenter.lng - this.initialMapCenter.lng) > 0.0001 ||
+                           Math.abs(currentCenter.lat - this.initialMapCenter.lat) > 0.0001;
+            if (mapMoved) {
+                clearTimeout(this.longPressTimer);
+                this.longPressTimer = null;
+                this.initialMapCenter = null;
+            }
         }
     }
 
@@ -638,6 +662,7 @@ export class RoutingControl {
             clearTimeout(this.longPressTimer);
             this.longPressTimer = null;
         }
+        this.initialMapCenter = null;
     }
 
     _showContextMenu(e) {

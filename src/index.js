@@ -5,7 +5,7 @@ import basemapStyle from './assets/basemapstyle.json';
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
 
-import { combineWindBytesToImage, computeWindSpeedFromUVBytes, createCMAP, createCategoricalPalette, fetchInitTimeRange, parseInitTimeToDate, generateInitTimes6h } from './util.js';
+import { combineWindBytesToImage, computeWindSpeedFromUVBytes, createCMAP, createCategoricalPalette, fetchInitTimeRange, parseInitTimeToDate, generateInitTimes6h, getLocationFromIP } from './util.js';
 import { MenuBar } from '@menu_bar/menubar.js';
 import '@menu_bar/menubar.css';
 import { TimeSlider } from '@time_slider/timeslider.js';
@@ -740,45 +740,62 @@ window.addEventListener('keydown', (ev) => {
     }
 });
 
+// Helper function to apply location to map
+function applyLocation(longitude, latitude, zoom = 6) {
+    // Center map
+    map.flyTo({
+        center: [longitude, latitude],
+        zoom: zoom
+    });
+
+    // Add blue dot marker
+    const dot = document.createElement('div');
+    dot.className = 'pf-location-dot';
+    new mapboxgl.Marker({ element: dot })
+        .setLngLat([longitude, latitude])
+        .addTo(map);
+
+    // Default routing start to user location
+    if (routingControl) {
+        routingControl.setStart([longitude, latitude]);
+    }
+
+    // Activate picker
+    tooltipPinned = true;
+    lastPickedLngLat = [longitude, latitude];
+    
+    try {
+        updateTooltipUnitFormat(menu.getState().unit);
+        updateTooltipAtLngLat(longitude, latitude);
+    } catch (e) {
+        // Data not ready yet, will be handled by render loop
+    }
+}
+
+
 // Auto-geolocation
 if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
         (position) => {
             const { longitude, latitude } = position.coords;
-            
-            // Center map
-            map.flyTo({
-                center: [longitude, latitude],
-                zoom: 6
-            });
-
-            // Add blue dot marker
-            const dot = document.createElement('div');
-            dot.className = 'pf-location-dot';
-            new mapboxgl.Marker({ element: dot })
-                .setLngLat([longitude, latitude])
-                .addTo(map);
-
-            // Default routing start to user location
-            if (routingControl) {
-                routingControl.setStart([longitude, latitude]);
-            }
-
-            // Activate picker
-            tooltipPinned = true;
-            lastPickedLngLat = [longitude, latitude];
-            
-            try {
-                updateTooltipUnitFormat(menu.getState().unit);
-                updateTooltipAtLngLat(longitude, latitude);
-            } catch (e) {
-                // Data not ready yet, will be handled by render loop
-            }
+            applyLocation(longitude, latitude, 6);
         },
-        (error) => {
-            // Geolocation failed or denied, using default
+        async (error) => {
+            // Geolocation failed or denied, try IP geolocation fallback
+            console.log('Geolocation failed, trying IP fallback:', error.message);
+            const location = await getLocationFromIP();
+            if (location) {
+                // Use country/continent level location with lower zoom
+                applyLocation(location.longitude, location.latitude, 4);
+            }
         }
     );
 } else {
-    // Geolocation not supported
+    // Geolocation not supported, try IP geolocation fallback
+    getLocationFromIP().then(location => {
+        if (location) {
+            // Use country/continent level location with lower zoom
+            applyLocation(location.longitude, location.latitude, 4);
+        }
+    });
 }

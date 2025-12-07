@@ -213,3 +213,26 @@ export function formatLocal(date) {
     const tz = offM ? `GMT${sign}${offH}:${String(offM).padStart(2, '0')}` : `GMT${sign}${offH}`;
     return `${dayName} (${dd}/${mm}) ${hh}:${mi} ${tz}`;
 }
+
+// Get rough location from IP geolocation (country/continent level)
+// Returns { longitude, latitude } or null on failure
+export async function getLocationFromIP() {
+    try {
+        const response = await fetch('https://ipapi.co/json/');
+        if (!response.ok) throw new Error('IP geolocation failed');
+        
+        const data = await response.json();
+        
+        if (data.latitude && data.longitude) {
+            const lat = parseFloat(data.latitude);
+            const lon = parseFloat(data.longitude);
+            
+            if (!isNaN(lat) && !isNaN(lon)) {
+                return { longitude: lon, latitude: lat };
+            }
+        }
+    } catch (error) {
+        console.log('IP geolocation fallback failed:', error);
+    }
+    return null;
+}
