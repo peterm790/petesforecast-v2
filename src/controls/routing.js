@@ -1427,6 +1427,49 @@ export class RoutingControl {
         }
     }
 
+    // Haversine distance calculation
+    _haversineDistance(a, b) {
+        // a and b are [lon, lat] arrays
+        const R = 6371; // Earth radius in km
+        const dLat = (b[1] - a[1]) * Math.PI / 180;
+        const dLon = (b[0] - a[0]) * Math.PI / 180;
+        const lat1 = a[1] * Math.PI / 180;
+        const lat2 = b[1] * Math.PI / 180;
+        const x = Math.sin(dLat/2)**2 +
+                  Math.cos(lat1) * Math.cos(lat2) *
+                  Math.sin(dLon/2)**2;
+        return 2 * R * Math.asin(Math.sqrt(x));
+    }
+
+    // Greedy nearest-neighbor path ordering
+    _orderByNearest(points) {
+        // points are [lon, lat] arrays
+        const remaining = [...points];
+        if (remaining.length === 0) return [];
+
+        const ordered = [remaining.shift()]; // start with first point
+
+        while (remaining.length > 0) {
+            const last = ordered[ordered.length - 1];
+
+            // find nearest remaining point
+            let nearestIndex = 0;
+            let nearestDist = Infinity;
+
+            for (let i = 0; i < remaining.length; i++) {
+                const d = this._haversineDistance(last, remaining[i]);
+                if (d < nearestDist) {
+                    nearestDist = d;
+                    nearestIndex = i;
+                }
+            }
+
+            ordered.push(remaining.splice(nearestIndex, 1)[0]);
+        }
+
+        return ordered;
+    }
+
     _drawIsochrones(isochronePoints, step) {
         // Draw isochrone contour lines on the map
         // isochronePoints should be an array of [lat, lon] arrays
@@ -1452,15 +1495,18 @@ export class RoutingControl {
         for (const [stepNum, points] of this.isochronePointsByStep) {
             if (points.length < 2) continue;
 
-            // Sort points geographically (by longitude for simple contours)
-            const sortedPoints = points.sort((a, b) => a.lon - b.lon);
+            // Convert to [lon, lat] format for distance calculation
+            const pointsAsCoords = points.map(p => [p.lon, p.lat]);
+
+            // Order points using greedy nearest-neighbor algorithm
+            const orderedPoints = this._orderByNearest(pointsAsCoords);
 
             // Create LineString feature
             features.push({
                 type: 'Feature',
                 geometry: {
                     type: 'LineString',
-                    coordinates: sortedPoints.map(p => [p.lon, p.lat])
+                    coordinates: orderedPoints
                 },
                 properties: {
                     step: stepNum
