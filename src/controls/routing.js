@@ -789,11 +789,21 @@ export class RoutingControl {
                 type: 'circle',
                 source: 'pf-isochrone-source',
                 paint: {
-                    'circle-radius': 3,
-                    'circle-color': '#cccccc', // Light gray color
+                    'circle-radius': 1,
+                    'circle-color': [
+                        'hsl',
+                        ['*', ['/', ['get', 'step'], 150], 360], // Hue: step/150 * 360 (full spectrum)
+                        0.8,  // Saturation: 80%
+                        0.5   // Lightness: 50%
+                    ],
                     'circle-opacity': 0.8,  // High opacity as requested
                     'circle-stroke-width': 1,
-                    'circle-stroke-color': '#999999',
+                    'circle-stroke-color': [
+                        'hsl',
+                        ['*', ['/', ['get', 'step'], 150], 360], // Same hue as fill
+                        0.6,  // Saturation: 60%
+                        0.3   // Lightness: 30% (darker)
+                    ],
                     'circle-stroke-opacity': 0.6
                 }
             });
@@ -1320,9 +1330,9 @@ export class RoutingControl {
             const text = `${prefix} ${step}${sep}${dist}`;
             this.loadingOverlay.progressEl.textContent = text;
 
-            // Draw isochrone lines if available
+            // Draw isochrone points if available
             if (msg.isochrones && Array.isArray(msg.isochrones)) {
-                this._drawIsochrones(msg.isochrones);
+                this._drawIsochrones(msg.isochrones, msg.step);
             }
         } else if (msg.type === 'initial') {
             this._hasReceivedInitial = true;
@@ -1421,7 +1431,7 @@ export class RoutingControl {
         }
     }
 
-    _drawIsochrones(isochronePoints) {
+    _drawIsochrones(isochronePoints, step) {
         // Draw isochrone points on the map
         // isochronePoints should be an array of [lat, lon] arrays
 
@@ -1429,19 +1439,26 @@ export class RoutingControl {
             return;
         }
 
-        // Accumulate the new points
-        this.isochronePoints.push(...isochronePoints);
+        // Accumulate the new points with step information
+        const pointsWithStep = isochronePoints.map(point => ({
+            lat: point[0],
+            lon: point[1],
+            step: step || 0
+        }));
+        this.isochronePoints.push(...pointsWithStep);
 
-        // Convert accumulated [lat, lon] to [lon, lat] for Mapbox and create point features
+        // Create point features with step-based properties
         const features = this.isochronePoints
-            .filter(point => Array.isArray(point) && point.length >= 2 && !isNaN(point[0]) && !isNaN(point[1]))
+            .filter(point => !isNaN(point.lat) && !isNaN(point.lon))
             .map(point => ({
                 type: 'Feature',
                 geometry: {
                     type: 'Point',
-                    coordinates: [point[1], point[0]] // [lon, lat]
+                    coordinates: [point.lon, point.lat] // [lon, lat]
                 },
-                properties: {}
+                properties: {
+                    step: point.step
+                }
             }));
 
         const isochroneSource = this.map.getSource('pf-isochrone-source');
