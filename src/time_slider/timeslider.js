@@ -28,7 +28,7 @@ export class TimeSlider {
         this.availableHours = hoursForFrequency('3d');
         this.currentIndex = 0;
         this.initTime = null; // Date in UTC
-        this.showLocalTime = false;
+        this.showLocalTime = true;
         this._lastActive = null;
         this.bgLoading = { active: false, done: 0, total: 0 };
         this.maxPlayableIndex = Infinity;

@@ -554,7 +554,8 @@ const menu = new MenuBar({
         frequency: '5d',
 			variable: 'wind_speed_10m',
         colormapGenre: 'cmocean',
-        colormap: 'thermal'
+        colormap: 'thermal',
+        showLocalTime: true
     },
     onChange: async (state, meta) => {
         if (!INIT_ISOS_ASC || !state.initData) {

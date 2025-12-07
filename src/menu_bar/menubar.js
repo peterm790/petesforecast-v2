@@ -49,7 +49,7 @@ export class MenuBar {
             colormapGenre: initialState.colormapGenre || 'sequential',
             colormap: initialState.colormap || 'thermal',
             unit: initialState.unit || null,
-            showLocalTime: initialState.showLocalTime || false
+            showLocalTime: initialState.showLocalTime || true
         };
 
         this.root = null;

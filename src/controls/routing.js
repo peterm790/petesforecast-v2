@@ -16,7 +16,7 @@ export class RoutingControl {
             frequency: '1hr', // Default API frequency
             polar_file: 'volvo70'
         };
-        this.showLocalTime = false;
+        this.showLocalTime = true;
         this.routeData = null; // Store API response for time lookup
 
         // Markers
@@ -774,7 +774,31 @@ export class RoutingControl {
                 }
             });
         }
-        
+
+        // -- Isochrone Lines Source & Layer --
+        if (!this.map.getSource('pf-isochrone-source')) {
+            this.map.addSource('pf-isochrone-source', {
+                type: 'geojson',
+                data: { type: 'FeatureCollection', features: [] }
+            });
+        }
+        if (!this.map.getLayer('pf-isochrone-lines')) {
+            this.map.addLayer({
+                id: 'pf-isochrone-lines',
+                type: 'line',
+                source: 'pf-isochrone-source',
+                layout: {
+                    'line-join': 'round',
+                    'line-cap': 'round'
+                },
+                paint: {
+                    'line-color': '#cccccc', // Light gray color
+                    'line-width': 2,
+                    'line-opacity': 0.8  // High opacity as requested
+                }
+            });
+        }
+
         // Boat Position Marker (Dot)
         if (!this.map.getSource('pf-boat-pos-source')) {
             this.map.addSource('pf-boat-pos-source', {
@@ -1191,6 +1215,12 @@ export class RoutingControl {
             polar_file: this.state.polar_file
         });
 
+        // Clear existing isochrone lines for new route calculation
+        const isochroneSource = this.map.getSource('pf-isochrone-source');
+        if (isochroneSource) {
+            isochroneSource.setData({ type: 'FeatureCollection', features: [] });
+        }
+
         // Show loading state
         this.loadingOverlay.show(1);
         if (this.loadingOverlay.progressEl) {
@@ -1288,6 +1318,11 @@ export class RoutingControl {
             const prefix = this._hasReceivedInitial ? "Optimising..." : "Calculating...";
             const text = `${prefix} ${step}${sep}${dist}`;
             this.loadingOverlay.progressEl.textContent = text;
+
+            // Draw isochrone lines if available
+            if (msg.isochrones && Array.isArray(msg.isochrones)) {
+                this._drawIsochrones(msg.isochrones);
+            }
         } else if (msg.type === 'initial') {
             this._hasReceivedInitial = true;
             this.loadingOverlay.progressEl.textContent = "Optimising...";
@@ -1374,6 +1409,41 @@ export class RoutingControl {
             }
         } else {
             console.warn("Received empty route data");
+        }
+    }
+
+    _drawIsochrones(isochronePoints) {
+        // Draw isochrone lines on the map
+        // isochronePoints should be an array of [lat, lon] arrays
+
+        if (!Array.isArray(isochronePoints) || isochronePoints.length === 0) {
+            return;
+        }
+
+        // Convert [lat, lon] to [lon, lat] for Mapbox
+        const coords = isochronePoints.map(point => [point[1], point[0]]);
+
+        // Validate coordinates
+        const validCoords = coords.filter(c => !isNaN(c[0]) && !isNaN(c[1]));
+
+        if (validCoords.length === 0) {
+            console.warn("Received isochrone data but found no valid coordinates", isochronePoints[0]);
+            return;
+        }
+
+        const isochroneSource = this.map.getSource('pf-isochrone-source');
+        if (isochroneSource) {
+            isochroneSource.setData({
+                type: 'FeatureCollection',
+                features: [{
+                    type: 'Feature',
+                    geometry: {
+                        type: 'LineString',
+                        coordinates: validCoords
+                    },
+                    properties: {}
+                }]
+            });
         }
     }
 
