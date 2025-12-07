@@ -18,7 +18,7 @@ export class RoutingControl {
         };
         this.showLocalTime = true;
         this.routeData = null; // Store API response for time lookup
-        this.isochronePoints = []; // Accumulate all isochrone points
+        this.isochronePointsByStep = new Map(); // Group isochrone points by step
 
         // Markers
         this.startMarker = null;
@@ -776,35 +776,31 @@ export class RoutingControl {
             });
         }
 
-        // -- Isochrone Points Source & Layer --
+        // -- Isochrone Lines Source & Layer --
         if (!this.map.getSource('pf-isochrone-source')) {
             this.map.addSource('pf-isochrone-source', {
                 type: 'geojson',
                 data: { type: 'FeatureCollection', features: [] }
             });
         }
-        if (!this.map.getLayer('pf-isochrone-points')) {
+        if (!this.map.getLayer('pf-isochrone-lines')) {
             this.map.addLayer({
-                id: 'pf-isochrone-points',
-                type: 'circle',
+                id: 'pf-isochrone-lines',
+                type: 'line',
                 source: 'pf-isochrone-source',
+                layout: {
+                    'line-join': 'round',
+                    'line-cap': 'round'
+                },
                 paint: {
-                    'circle-radius': 1,
-                    'circle-color': [
+                    'line-color': [
                         'hsl',
                         ['*', ['/', ['get', 'step'], 150], 360], // Hue: step/150 * 360 (full spectrum)
-                        0.8,  // Saturation: 80%
+                        0.9,  // Saturation: 90% (more vibrant)
                         0.5   // Lightness: 50%
                     ],
-                    'circle-opacity': 0.8,  // High opacity as requested
-                    'circle-stroke-width': 1,
-                    'circle-stroke-color': [
-                        'hsl',
-                        ['*', ['/', ['get', 'step'], 150], 360], // Same hue as fill
-                        0.6,  // Saturation: 60%
-                        0.3   // Lightness: 30% (darker)
-                    ],
-                    'circle-stroke-opacity': 0.6
+                    'line-width': 2,
+                    'line-opacity': 0.9  // Higher opacity for better visibility
                 }
             });
         }
@@ -1226,7 +1222,7 @@ export class RoutingControl {
         });
 
         // Clear existing isochrone points for new route calculation
-        this.isochronePoints = [];
+        this.isochronePointsByStep.clear();
         const isochroneSource = this.map.getSource('pf-isochrone-source');
         if (isochroneSource) {
             isochroneSource.setData({ type: 'FeatureCollection', features: [] });
@@ -1339,7 +1335,7 @@ export class RoutingControl {
             this.loadingOverlay.progressEl.textContent = "Optimising...";
 
             // Clear accumulated isochrone points when initial route is found
-            this.isochronePoints = [];
+            this.isochronePointsByStep.clear();
             const isochroneSource = this.map.getSource('pf-isochrone-source');
             if (isochroneSource) {
                 isochroneSource.setData({ type: 'FeatureCollection', features: [] });
@@ -1432,34 +1428,45 @@ export class RoutingControl {
     }
 
     _drawIsochrones(isochronePoints, step) {
-        // Draw isochrone points on the map
+        // Draw isochrone contour lines on the map
         // isochronePoints should be an array of [lat, lon] arrays
 
         if (!Array.isArray(isochronePoints) || isochronePoints.length === 0) {
             return;
         }
 
-        // Accumulate the new points with step information
-        const pointsWithStep = isochronePoints.map(point => ({
-            lat: point[0],
-            lon: point[1],
-            step: step || 0
-        }));
-        this.isochronePoints.push(...pointsWithStep);
+        // Group points by step
+        if (!this.isochronePointsByStep.has(step)) {
+            this.isochronePointsByStep.set(step, []);
+        }
 
-        // Create point features with step-based properties
-        const features = this.isochronePoints
-            .filter(point => !isNaN(point.lat) && !isNaN(point.lon))
-            .map(point => ({
+        // Add new points to the step group
+        const pointsWithCoords = isochronePoints.map(point => ({
+            lat: point[0],
+            lon: point[1]
+        }));
+        this.isochronePointsByStep.get(step).push(...pointsWithCoords);
+
+        // Create contour line features for each step
+        const features = [];
+        for (const [stepNum, points] of this.isochronePointsByStep) {
+            if (points.length < 2) continue;
+
+            // Sort points geographically (by longitude for simple contours)
+            const sortedPoints = points.sort((a, b) => a.lon - b.lon);
+
+            // Create LineString feature
+            features.push({
                 type: 'Feature',
                 geometry: {
-                    type: 'Point',
-                    coordinates: [point.lon, point.lat] // [lon, lat]
+                    type: 'LineString',
+                    coordinates: sortedPoints.map(p => [p.lon, p.lat])
                 },
                 properties: {
-                    step: point.step
+                    step: stepNum
                 }
-            }));
+            });
+        }
 
         const isochroneSource = this.map.getSource('pf-isochrone-source');
         if (isochroneSource) {
