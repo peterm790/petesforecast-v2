@@ -18,6 +18,7 @@ export class RoutingControl {
         };
         this.showLocalTime = true;
         this.routeData = null; // Store API response for time lookup
+        this.isochronePoints = []; // Accumulate all isochrone points
 
         // Markers
         this.startMarker = null;
@@ -775,26 +776,25 @@ export class RoutingControl {
             });
         }
 
-        // -- Isochrone Lines Source & Layer --
+        // -- Isochrone Points Source & Layer --
         if (!this.map.getSource('pf-isochrone-source')) {
             this.map.addSource('pf-isochrone-source', {
                 type: 'geojson',
                 data: { type: 'FeatureCollection', features: [] }
             });
         }
-        if (!this.map.getLayer('pf-isochrone-lines')) {
+        if (!this.map.getLayer('pf-isochrone-points')) {
             this.map.addLayer({
-                id: 'pf-isochrone-lines',
-                type: 'line',
+                id: 'pf-isochrone-points',
+                type: 'circle',
                 source: 'pf-isochrone-source',
-                layout: {
-                    'line-join': 'round',
-                    'line-cap': 'round'
-                },
                 paint: {
-                    'line-color': '#cccccc', // Light gray color
-                    'line-width': 2,
-                    'line-opacity': 0.8  // High opacity as requested
+                    'circle-radius': 3,
+                    'circle-color': '#cccccc', // Light gray color
+                    'circle-opacity': 0.8,  // High opacity as requested
+                    'circle-stroke-width': 1,
+                    'circle-stroke-color': '#999999',
+                    'circle-stroke-opacity': 0.6
                 }
             });
         }
@@ -1215,7 +1215,8 @@ export class RoutingControl {
             polar_file: this.state.polar_file
         });
 
-        // Clear existing isochrone lines for new route calculation
+        // Clear existing isochrone points for new route calculation
+        this.isochronePoints = [];
         const isochroneSource = this.map.getSource('pf-isochrone-source');
         if (isochroneSource) {
             isochroneSource.setData({ type: 'FeatureCollection', features: [] });
@@ -1326,6 +1327,14 @@ export class RoutingControl {
         } else if (msg.type === 'initial') {
             this._hasReceivedInitial = true;
             this.loadingOverlay.progressEl.textContent = "Optimising...";
+
+            // Clear accumulated isochrone points when initial route is found
+            this.isochronePoints = [];
+            const isochroneSource = this.map.getSource('pf-isochrone-source');
+            if (isochroneSource) {
+                isochroneSource.setData({ type: 'FeatureCollection', features: [] });
+            }
+
             this._drawRoute(msg.data, true); // true = isInitial
         } else if (msg.type === 'result') {
             this._drawRoute(msg.data, false); // false = final result
@@ -1413,36 +1422,33 @@ export class RoutingControl {
     }
 
     _drawIsochrones(isochronePoints) {
-        // Draw isochrone lines on the map
+        // Draw isochrone points on the map
         // isochronePoints should be an array of [lat, lon] arrays
 
         if (!Array.isArray(isochronePoints) || isochronePoints.length === 0) {
             return;
         }
 
-        // Convert [lat, lon] to [lon, lat] for Mapbox
-        const coords = isochronePoints.map(point => [point[1], point[0]]);
+        // Accumulate the new points
+        this.isochronePoints.push(...isochronePoints);
 
-        // Validate coordinates
-        const validCoords = coords.filter(c => !isNaN(c[0]) && !isNaN(c[1]));
-
-        if (validCoords.length === 0) {
-            console.warn("Received isochrone data but found no valid coordinates", isochronePoints[0]);
-            return;
-        }
+        // Convert accumulated [lat, lon] to [lon, lat] for Mapbox and create point features
+        const features = this.isochronePoints
+            .filter(point => Array.isArray(point) && point.length >= 2 && !isNaN(point[0]) && !isNaN(point[1]))
+            .map(point => ({
+                type: 'Feature',
+                geometry: {
+                    type: 'Point',
+                    coordinates: [point[1], point[0]] // [lon, lat]
+                },
+                properties: {}
+            }));
 
         const isochroneSource = this.map.getSource('pf-isochrone-source');
         if (isochroneSource) {
             isochroneSource.setData({
                 type: 'FeatureCollection',
-                features: [{
-                    type: 'Feature',
-                    geometry: {
-                        type: 'LineString',
-                        coordinates: validCoords
-                    },
-                    properties: {}
-                }]
+                features: features
             });
         }
     }
