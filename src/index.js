@@ -18,6 +18,7 @@ import { createLegendManager } from './controls/legend.js';
 import { createTooltipManager } from './controls/tooltip.js';
 import { RoutingControl } from './controls/routing.js';
 import { startTour } from './controls/tour.js';
+import { initAuth } from './auth/clerk.js';
 import './index.css'; // Import global CSS for location dot
 
 // Unit conversion helpers (affine y = a*x + b) derived from weather_variables.json per variable
@@ -72,7 +73,8 @@ const map = new mapboxgl.Map({
 });
 
 const routingControl = new RoutingControl(map);
-routingControl.mount(document.body);
+// Remove initial mount here, we will mount it inside the menu stack later
+// routingControl.mount(document.body);
 routingControl.onRouteLoaded((leadHours) => {
     if (timeSlider) {
         timeSlider.setLeadHour(leadHours);
@@ -608,9 +610,18 @@ helpBtn.className = 'pf-help-btn';
 helpBtn.textContent = '?';
 helpBtn.onclick = () => startTour();
 if (menu.root) {
+    // Mount Routing Control into MenuBar container
+    // It should be below weather menu and above profile/help
+    routingControl.mount(menu.root);
+
     menu.root.appendChild(helpBtn);
+    // Initialize Auth (will insert profile button before help button)
+    initAuth(menu.root);
 } else {
     document.body.appendChild(helpBtn);
+    // Fallback if menu root not ready
+    initAuth(document.body);
+    routingControl.mount(document.body); // Fallback to body mount
 }
 
 // Initialize slider from current menu state

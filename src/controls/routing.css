@@ -2,17 +2,15 @@
    ROUTING CONTAINER
    ======================= */
    .pf-routing-container {
-    position: fixed;
-    top: clamp(8px, 1.5vh, 16px);
-    left: clamp(8px, 1.5vh, 16px); /* Left positioning */
-    z-index: 1000;
-    --pf-glass-tint: rgba(0,0,0,.28);
-    font-family: "Inter", "Segoe UI", system-ui, sans-serif;
-    line-height: 1.4;
-    font-size: 0.78rem;
-    user-select: none;
-    -webkit-user-select: none;
-    touch-action: none;
+    /* No fixed position here, integrated into menubar */
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 12px;
+    pointer-events: none; /* Let clicks pass through gaps */
+  }
+  .pf-routing-container > * {
+    pointer-events: auto; /* Re-enable pointer events for children */
   }
   .pf-routing-container.hidden { display: none; }
   

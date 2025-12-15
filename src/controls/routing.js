@@ -250,7 +250,26 @@ export class RoutingControl {
         wrap.appendChild(sidebar);
         container.appendChild(openBtn);
         container.appendChild(wrap);
-        host.appendChild(container);
+        
+        // If target is the menubar container, we need to insert it in the correct order.
+        // But appendChild is fine if we orchestrate the order in index.js.
+        // Ideally we want it before the help/profile buttons but after the weather menu.
+        // Since we are mounting it via routingControl.mount(menu.root) in index.js, it will be appended.
+        // We need to use insertBefore if we want specific ordering.
+        
+        // However, mount() just appends to 'target'.
+        // If 'target' is menu.root, we should insert before the profile button or help button if they exist.
+        
+        const profileBtn = host.querySelector('.pf-profile-btn');
+        const helpBtn = host.querySelector('.pf-help-btn');
+        const refNode = profileBtn || helpBtn;
+        
+        if (refNode && host.contains(refNode)) {
+            host.insertBefore(container, refNode);
+        } else {
+            host.appendChild(container);
+        }
+        
         this.container = container;
         
         // Mount loading overlay to the sidebar to cover the controls

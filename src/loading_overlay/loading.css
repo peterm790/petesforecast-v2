@@ -5,7 +5,7 @@
   align-items: center;
   justify-content: center;
   background: rgba(0, 0, 0, 0.45);
-  z-index: 999999;
+  z-index: 1000; /* Lower than auth overlay (2000) but higher than map */
   pointer-events: all; /* capture clicks to block UI */
 }
 .pf-loading-overlay * { pointer-events: none; }

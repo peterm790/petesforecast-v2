@@ -1,1 +1,48 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+.vite/
+
+# Environment variables
 .env
+.env.local
+.env.*.local
+.env.production
+.env.development
+
+# Cache files
+wind_cache_state.json
+*.cache
+
+# Cloudflare
+.wrangler/
+.dev.vars
+
+# Clerk (if using local files)
+.clerk/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Temporary files
+*.tmp
+*.temp

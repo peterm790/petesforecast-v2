@@ -13,6 +13,8 @@
     "start": "vite"
   },
   "dependencies": {
+    "@clerk/clerk-js": "^5.114.1",
+    "@clerk/themes": "^2.4.43",
     "@deck.gl/core": "9.1.12",
     "@deck.gl/extensions": "9.1.12",
     "@deck.gl/layers": "9.1.12",
