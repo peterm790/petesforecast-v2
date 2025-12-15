@@ -185,7 +185,7 @@ async function fetchFrames(url, signal) {
     throw new Error(`Unexpected array shape from API: ${JSON.stringify(shape)}`);
 }
 
-const API_BASE = 'https://api.onlineweatherrouting.com';
+const API_BASE = 'https://api.offshoreweatherrouting.com';
 // Configuration: number of lead_time slices per request
 const LEAD_CHUNK_SIZE = 12;
 // Debug switch for tracing lead/frame ordering
