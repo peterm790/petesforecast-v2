@@ -242,7 +242,8 @@ export class RoutingControl {
         clearBtn.className = 'pf-routing-button';
         clearBtn.textContent = 'Clear';
         clearBtn.style.marginTop = '5px';
-        clearBtn.onclick = () => this.clearAll();
+        // Clear ONLY the computed route (keep start/end + bbox)
+        clearBtn.onclick = () => this.clearRoute();
         resultView.appendChild(clearBtn);
 
         sidebar.appendChild(resultView);
@@ -731,6 +732,39 @@ export class RoutingControl {
             data: { type: 'FeatureCollection', features: [] }
         });
 
+        // Finish Radius (5nm) Shaded Region
+        if (!this.map.getSource('pf-finish-radius-source')) {
+            this.map.addSource('pf-finish-radius-source', {
+                type: 'geojson',
+                data: { type: 'FeatureCollection', features: [] }
+            });
+        }
+        if (!this.map.getLayer('pf-finish-radius-fill')) {
+            this.map.addLayer({
+                id: 'pf-finish-radius-fill',
+                type: 'fill',
+                source: 'pf-finish-radius-source',
+                paint: {
+                    'fill-color': '#ff0000',
+                    'fill-opacity': 0.10
+                },
+                filter: ['==', '$type', 'Polygon']
+            });
+        }
+        if (!this.map.getLayer('pf-finish-radius-outline')) {
+            this.map.addLayer({
+                id: 'pf-finish-radius-outline',
+                type: 'line',
+                source: 'pf-finish-radius-source',
+                paint: {
+                    'line-color': '#ff0000',
+                    'line-width': 2,
+                    'line-opacity': 0.45
+                },
+                filter: ['==', '$type', 'Polygon']
+            });
+        }
+
         // Line Layer (Great Circle)
         this.map.addLayer({
             id: 'pf-routing-line',
@@ -872,6 +906,10 @@ export class RoutingControl {
     }
 
     _removeMapLayers() {
+        if (this.map.getLayer('pf-finish-radius-outline')) this.map.removeLayer('pf-finish-radius-outline');
+        if (this.map.getLayer('pf-finish-radius-fill')) this.map.removeLayer('pf-finish-radius-fill');
+        if (this.map.getSource('pf-finish-radius-source')) this.map.removeSource('pf-finish-radius-source');
+
         if (this.map.getLayer('pf-routing-line')) this.map.removeLayer('pf-routing-line');
         if (this.map.getLayer('pf-routing-bbox')) this.map.removeLayer('pf-routing-bbox');
         if (this.map.getLayer('pf-routing-bbox-outline')) this.map.removeLayer('pf-routing-bbox-outline');
@@ -936,6 +974,43 @@ export class RoutingControl {
         // Reset view
         if (this.formView) this.formView.style.display = 'flex';
         if (this.resultView) this.resultView.style.display = 'none';
+    }
+
+    clearRoute() {
+        // Clear only computed route outputs, preserving start/end/bbox + their markers.
+        this.routeData = null;
+        this._hasReceivedInitial = false;
+
+        // Clear accumulated isochrone points
+        if (this.isochronePointsByStep && typeof this.isochronePointsByStep.clear === 'function') {
+            this.isochronePointsByStep.clear();
+        }
+
+        // Clear route layers (initial + result) and isochrones
+        const resultSource = this.map.getSource('pf-result-source');
+        if (resultSource) resultSource.setData({ type: 'FeatureCollection', features: [] });
+
+        const initialSource = this.map.getSource('pf-initial-route-source');
+        if (initialSource) initialSource.setData({ type: 'FeatureCollection', features: [] });
+
+        const isochroneSource = this.map.getSource('pf-isochrone-source');
+        if (isochroneSource) isochroneSource.setData({ type: 'FeatureCollection', features: [] });
+
+        // Clear boat position marker
+        const boatSource = this.map.getSource('pf-boat-pos-source');
+        if (boatSource) boatSource.setData({ type: 'FeatureCollection', features: [] });
+
+        // Reset result table values (if present)
+        const ids = ['time', 'pos', 'tws', 'twd', 'twa', 'hdg', 'spd'];
+        for (const id of ids) {
+            const el = document.getElementById(`pf-route-val-${id}`);
+            if (el) el.textContent = '-';
+        }
+
+        // Go back to the form view, with Run still enabled if start/end/bbox are present.
+        if (this.formView) this.formView.style.display = 'flex';
+        if (this.resultView) this.resultView.style.display = 'none';
+        this._updateRunButtonState();
     }
 
     _updateRunButtonState() {
@@ -1237,6 +1312,37 @@ export class RoutingControl {
                 features: features
             });
         }
+
+        // Keep finish radius region in sync as well
+        this._updateFinishRadiusGeoJSON();
+    }
+
+    _updateFinishRadiusGeoJSON() {
+        const finishSource = this.map.getSource('pf-finish-radius-source');
+        if (!finishSource) return;
+
+        if (!this.state.end) {
+            finishSource.setData({ type: 'FeatureCollection', features: [] });
+            return;
+        }
+
+        const FINISH_RADIUS_NM = 5;
+        const radiusMeters = FINISH_RADIUS_NM * 1852;
+        const ring = this._circleRing(this.state.end, radiusMeters, 96);
+
+        finishSource.setData({
+            type: 'FeatureCollection',
+            features: [{
+                type: 'Feature',
+                geometry: {
+                    type: 'Polygon',
+                    coordinates: [ring]
+                },
+                properties: {
+                    radius_nm: FINISH_RADIUS_NM
+                }
+            }]
+        });
     }
 
     // --- API ---
@@ -1545,17 +1651,53 @@ export class RoutingControl {
             // Order points using greedy nearest-neighbor algorithm
             const orderedPoints = this._orderByNearest(pointsAsCoords);
 
-            // Create LineString feature
-            features.push({
-                type: 'Feature',
-                geometry: {
-                    type: 'LineString',
-                    coordinates: orderedPoints
-                },
-                properties: {
-                    step: stepNum
+            // Split into multiple lines if any consecutive point gap is an outlier.
+            // Rule: only join points when the gap is within 1 standard deviation of all gaps
+            // (implemented as d <= mean + 1*std for the consecutive-distance distribution).
+            const gapsKm = [];
+            for (let i = 1; i < orderedPoints.length; i++) {
+                gapsKm.push(this._haversineDistance(orderedPoints[i - 1], orderedPoints[i]));
+            }
+
+            let mean = 0;
+            for (const g of gapsKm) mean += g;
+            mean = gapsKm.length ? (mean / gapsKm.length) : 0;
+
+            let variance = 0;
+            for (const g of gapsKm) variance += (g - mean) * (g - mean);
+            variance = gapsKm.length ? (variance / gapsKm.length) : 0;
+            const std = Math.sqrt(variance);
+
+            const thresholdKm = mean + std;
+
+            const segments = [];
+            let current = [orderedPoints[0]];
+
+            for (let i = 1; i < orderedPoints.length; i++) {
+                const dKm = gapsKm[i - 1];
+                if (dKm <= thresholdKm) {
+                    current.push(orderedPoints[i]);
+                } else {
+                    if (current.length >= 2) segments.push(current);
+                    current = [orderedPoints[i]];
                 }
-            });
+            }
+            if (current.length >= 2) segments.push(current);
+
+            // Emit a LineString per segment.
+            for (let segIdx = 0; segIdx < segments.length; segIdx++) {
+                features.push({
+                    type: 'Feature',
+                    geometry: {
+                        type: 'LineString',
+                        coordinates: segments[segIdx]
+                    },
+                    properties: {
+                        step: stepNum,
+                        segment: segIdx
+                    }
+                });
+            }
         }
 
         const isochroneSource = this.map.getSource('pf-isochrone-source');
@@ -1591,6 +1733,54 @@ export class RoutingControl {
             const phi = Math.atan2(z, Math.sqrt(x * x + y * y));
             const lam = Math.atan2(y, x);
             coords.push([toDeg(lam), toDeg(phi)]);
+        }
+        return coords;
+    }
+
+    _wrapLon(lonDeg) {
+        // Wrap to [-180, 180)
+        return ((((lonDeg + 180) % 360) + 360) % 360) - 180;
+    }
+
+    _destinationPoint(centerLngLat, bearingDeg, distanceMeters) {
+        if (!Array.isArray(centerLngLat) || centerLngLat.length !== 2) {
+            throw new Error('Invalid centerLngLat for destinationPoint');
+        }
+        const [lonDeg, latDeg] = centerLngLat;
+        if (!Number.isFinite(lonDeg) || !Number.isFinite(latDeg)) {
+            throw new Error('Invalid centerLngLat values for destinationPoint');
+        }
+
+        const R = 6371008.8; // mean Earth radius in meters
+        const brng = bearingDeg * Math.PI / 180;
+        const lat1 = latDeg * Math.PI / 180;
+        const lon1 = lonDeg * Math.PI / 180;
+        const angDist = distanceMeters / R;
+
+        const sinLat1 = Math.sin(lat1);
+        const cosLat1 = Math.cos(lat1);
+        const sinAng = Math.sin(angDist);
+        const cosAng = Math.cos(angDist);
+
+        const lat2 = Math.asin(sinLat1 * cosAng + cosLat1 * sinAng * Math.cos(brng));
+        const lon2 = lon1 + Math.atan2(
+            Math.sin(brng) * sinAng * cosLat1,
+            cosAng - sinLat1 * Math.sin(lat2)
+        );
+
+        const outLon = this._wrapLon(lon2 * 180 / Math.PI);
+        const outLat = lat2 * 180 / Math.PI;
+        return [outLon, outLat];
+    }
+
+    _circleRing(centerLngLat, radiusMeters, steps = 64) {
+        if (!Number.isFinite(radiusMeters) || radiusMeters <= 0) {
+            throw new Error('Invalid radiusMeters for circleRing');
+        }
+        const coords = [];
+        for (let i = 0; i <= steps; i++) {
+            const bearing = (i / steps) * 360;
+            coords.push(this._destinationPoint(centerLngLat, bearing, radiusMeters));
         }
         return coords;
     }
