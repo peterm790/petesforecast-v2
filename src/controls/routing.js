@@ -20,6 +20,7 @@ export class RoutingControl {
         this.routeData = null; // Store API response for time lookup
         this.isochronePointsByStep = new Map(); // Group isochrone points by step
         this.isochroneFeaturesByStep = new Map(); // Cache computed isochrone line features per step (performance)
+        this.eventSource = null; // SSE stream for routing progress/results
 
         // Markers
         this.startMarker = null;
@@ -69,6 +70,18 @@ export class RoutingControl {
     _yieldToPaint() {
         // Wait for the next frame so the user can actually see incremental updates.
         return new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+
+    _closeRouteStream() {
+        if (this.eventSource) {
+            try { this.eventSource.close(); } catch (e) { /* noop */ }
+            this.eventSource = null;
+        }
+        // Back-compat: abortController was used by fetch streaming; keep cleanup harmless.
+        if (this.abortController) {
+            try { this.abortController.abort(); } catch (e) { /* noop */ }
+            this.abortController = null;
+        }
     }
 
     onRouteLoaded(callback) {
@@ -992,6 +1005,7 @@ export class RoutingControl {
         // Clear only computed route outputs, preserving start/end/bbox + their markers.
         this.routeData = null;
         this._hasReceivedInitial = false;
+        this._closeRouteStream();
 
         // Clear accumulated isochrone points
         if (this.isochronePointsByStep && typeof this.isochronePointsByStep.clear === 'function') {
@@ -1394,6 +1408,9 @@ export class RoutingControl {
             isochroneSource.setData({ type: 'FeatureCollection', features: [] });
         }
 
+        // Close any previous stream before starting a new one
+        this._closeRouteStream();
+
         // Show loading state
         this.loadingOverlay.show(1);
         if (this.loadingOverlay.progressEl) {
@@ -1410,88 +1427,60 @@ export class RoutingControl {
                 cancelBtn.style.fontSize = '12px';
                 cancelBtn.onclick = (e) => {
                     e.stopPropagation();
-                    if (this.abortController) {
-                        this.abortController.abort();
-                        this.abortController = null;
-                    }
+                    this._closeRouteStream();
                 };
                 this.loadingOverlay.progressEl.parentNode.appendChild(cancelBtn);
             }
         }
 
-        this.abortController = new AbortController();
         this._hasReceivedInitial = false;
 
+        // SSE (EventSource) stream. Server emits `data: <json>\n\n` frames.
         try {
-            const response = await fetch(url + "?" + params.toString(), { 
-                method: 'GET',
-                signal: this.abortController.signal 
-            });
-            
-            if (!response.ok) {
-                throw new Error(`API Error: ${response.status} ${response.statusText}`);
-            }
+            const streamUrl = url + "?" + params.toString();
+            this.eventSource = new EventSource(streamUrl);
 
-            if (!response.body) {
-                throw new Error('API Error: response body is missing (stream unavailable)');
-            }
-
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                // Keep the last partial line in the buffer
-                buffer = lines.pop(); 
-
-                for (let i = 0; i < lines.length; i++) {
-                    const line = lines[i];
-                    if (!line.trim()) continue;
-                    try {
-                        const msg = JSON.parse(line);
-                        this._handleRouteMessage(msg);
-                        // Force the browser to paint between streamed updates (step-by-step feel).
-                        // Only do this for progress messages to avoid delaying final result handling.
-                        if (msg && msg.type === 'progress') {
-                            await this._yieldToPaint();
-                        }
-                    } catch (e) {
-                        console.error('JSON parse error:', e);
-                    }
-                }
-            }
-            
-            // Process any remaining buffer
-            if (buffer.trim()) {
+            this.eventSource.onmessage = async (ev) => {
                 try {
-                    const msg = JSON.parse(buffer);
+                    const msg = JSON.parse(ev.data);
                     this._handleRouteMessage(msg);
+
+                    // Step-by-step UI: paint between progress events.
                     if (msg && msg.type === 'progress') {
                         await this._yieldToPaint();
                     }
+
+                    // Final result: close stream + hide overlay
+                    if (msg && msg.type === 'result') {
+                        this._closeRouteStream();
+                        this.loadingOverlay.hide();
+                        const btn = this.loadingOverlay.root.querySelector('.pf-loading-cancel');
+                        if (btn) btn.remove();
+                    }
                 } catch (e) {
-                    console.error('Final JSON parse error:', e);
+                    console.error('SSE message parse error:', e, ev?.data);
                 }
-            }
+            };
 
-            this.abortController = null;
-
+            this.eventSource.onerror = (ev) => {
+                // EventSource gives limited error info; treat as fatal and close.
+                console.error('SSE stream error', ev);
+                const wasCancelled = !this.eventSource; // already closed elsewhere
+                this._closeRouteStream();
+                this.loadingOverlay.hide();
+                const btn = this.loadingOverlay.root.querySelector('.pf-loading-cancel');
+                if (btn) btn.remove();
+                if (!wasCancelled) {
+                    alert("Routing failed: SSE stream error");
+                }
+            };
         } catch (err) {
-            if (err.name === 'AbortError') {
-                console.log('Route calculation cancelled');
-            } else {
-                console.error("Route API Failed:", err);
-                alert("Routing failed: " + err.message);
-            }
-        } finally {
+            console.error("Route SSE setup failed:", err);
+            this._closeRouteStream();
             this.loadingOverlay.hide();
             const btn = this.loadingOverlay.root.querySelector('.pf-loading-cancel');
             if (btn) btn.remove();
+            alert("Routing failed: " + err.message);
         }
     }
 
