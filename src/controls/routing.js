@@ -7,6 +7,73 @@ export class RoutingControl {
     constructor(map) {
         this.map = map;
         this.loadingOverlay = new LoadingOverlay();
+        // Defaults used when in "custom" mode (and as initial values).
+        this._ADV_DEFAULTS = Object.freeze({
+            crank_step: 60,
+            avoid_land_crossings: true,
+            leg_check_spacing_nm: 3.0,
+            spread: 270,
+            wake_lim: 20,
+            n_points: 20,
+            finish_size: 5.0
+        });
+        // Presets used for non-custom routing modes (locked/read-only).
+        this._ROUTING_PRESETS = Object.freeze({
+            fast: Object.freeze({
+                crank_step: 60,
+                avoid_land_crossings: false,
+                leg_check_spacing_nm: 5.0,
+                spread: 120,
+                wake_lim: 30,
+                n_points: 10,
+                finish_size: 5.0
+            }),
+            'fast-coastal': Object.freeze({
+                crank_step: 60,
+                avoid_land_crossings: true,
+                leg_check_spacing_nm: 5.0,
+                spread: 120,
+                wake_lim: 30,
+                n_points: 10,
+                finish_size: 5.0
+            }),
+            balanced: Object.freeze({
+                crank_step: 30,
+                avoid_land_crossings: false,
+                leg_check_spacing_nm: 5.0,
+                spread: 180,
+                wake_lim: 20,
+                n_points: 20,
+                finish_size: 5.0
+            }),
+            'balanced-coastal': Object.freeze({
+                crank_step: 30,
+                avoid_land_crossings: true,
+                leg_check_spacing_nm: 5.0,
+                spread: 180,
+                wake_lim: 20,
+                n_points: 20,
+                finish_size: 5.0
+            }),
+            accurate: Object.freeze({
+                crank_step: 30,
+                avoid_land_crossings: false,
+                leg_check_spacing_nm: 2.0,
+                spread: 270,
+                wake_lim: 15,
+                n_points: 30,
+                finish_size: 5.0
+            }),
+            'accurate-coastal': Object.freeze({
+                crank_step: 30,
+                avoid_land_crossings: true,
+                leg_check_spacing_nm: 2.0,
+                spread: 270,
+                wake_lim: 15,
+                n_points: 30,
+                finish_size: 5.0
+            })
+        });
         this.state = {
             start: null, // [lng, lat]
             end: null,   // [lng, lat]
@@ -14,7 +81,11 @@ export class RoutingControl {
             leadTimeStart: 0, // Default start lead time (hours)
             initTimeIndex: -1, // Default to latest
             frequency: '1hr', // Default API frequency
-            polar_file: 'volvo70'
+            polar_file: 'volvo70',
+            routing_mode: 'custom',
+
+            // --- Routing API advanced defaults ---
+            ...this._ADV_DEFAULTS
         };
         this.showLocalTime = true;
         this.routeData = null; // Store API response for time lookup
@@ -37,6 +108,11 @@ export class RoutingControl {
             minLon: null, minLat: null, maxLon: null, maxLat: null
         };
         this.timeSelect = null;
+        this.advancedOpen = false;
+        this.advancedSection = null;
+        this.advancedToggleBtn = null;
+        this.routingModeSelect = null;
+        this.advancedLockNote = null;
         
         // Context Menu
         this.contextMenuElement = null;
@@ -193,6 +269,38 @@ export class RoutingControl {
         // Polar File Panel
         formView.appendChild(this._createPolarPanel());
 
+        // Routing Mode Panel (locks/unlocks advanced settings)
+        formView.appendChild(this._createRoutingModePanel());
+
+        // Advanced toggle button ("More ▾" / "Less ▴"), inspired by the weather menu
+        const advToggle = document.createElement('button');
+        advToggle.className = 'pf-routing-button pf-routing-more';
+        advToggle.textContent = 'More ▾';
+        advToggle.setAttribute('aria-label', 'Show more routing options');
+        advToggle.setAttribute('aria-expanded', 'false');
+        advToggle.setAttribute('aria-controls', 'pf-routing-advanced-section');
+        advToggle.addEventListener('click', () => {
+            this.advancedOpen = !this.advancedOpen;
+            if (this.advancedSection) {
+                this.advancedSection.style.display = this.advancedOpen ? '' : 'none';
+            }
+            advToggle.textContent = this.advancedOpen ? 'Less ▴' : 'More ▾';
+            advToggle.setAttribute('aria-expanded', this.advancedOpen ? 'true' : 'false');
+        });
+        this.advancedToggleBtn = advToggle;
+        formView.appendChild(advToggle);
+
+        // Advanced section container
+        const adv = this._createAdvancedSection();
+        adv.id = 'pf-routing-advanced-section';
+        adv.className = 'pf-routing-advanced';
+        adv.style.display = 'none';
+        this.advancedSection = adv;
+        formView.appendChild(adv);
+
+        // Apply initial lock state (based on routing_mode)
+        this._applyRoutingModeLock();
+
         // Run Route Button
         const runBtn = document.createElement('button');
         runBtn.className = 'pf-routing-button';
@@ -305,6 +413,263 @@ export class RoutingControl {
         // User requested: "routing menu be close by default"
         wrap.classList.add('hidden');
         openBtn.style.display = 'flex';
+    }
+
+    _createRoutingModePanel() {
+        const panel = document.createElement('div');
+        panel.className = 'pf-routing-panel';
+        panel.id = 'pf-routing-mode-panel';
+
+        const labelRow = this._createLabelRow(
+            'Routing mode',
+            'Presets lock advanced options to defaults. Choose Custom to edit advanced options.'
+        );
+        panel.appendChild(labelRow);
+
+        const select = document.createElement('select');
+        select.className = 'pf-routing-input';
+        select.style.cursor = 'pointer';
+        select.id = 'pf-routing-mode-select';
+
+        const options = [
+            ['fast', 'fast'],
+            ['fast-coastal', 'fast-coastal'],
+            ['balanced', 'balanced'],
+            ['balanced-coastal', 'balanced-coastal'],
+            ['accurate', 'accurate'],
+            ['accurate-coastal', 'accurate-coastal'],
+            ['custom', 'custom']
+        ];
+
+        for (const [value, text] of options) {
+            const opt = document.createElement('option');
+            opt.value = value;
+            opt.textContent = text;
+            if (this.state.routing_mode === value) opt.selected = true;
+            select.appendChild(opt);
+        }
+
+        select.addEventListener('change', () => {
+            this.state.routing_mode = select.value;
+            this._applyRoutingModeLock();
+        });
+
+        this.routingModeSelect = select;
+        panel.appendChild(select);
+        return panel;
+    }
+
+    _applyRoutingModeLock() {
+        const isCustom = this.state.routing_mode === 'custom';
+
+        // Non-custom modes force their preset values
+        if (!isCustom) {
+            const preset = this._ROUTING_PRESETS[this.state.routing_mode];
+            if (!preset) {
+                // No fallbacks: unknown mode is an error.
+                throw new Error(`Unknown routing_mode preset: ${this.state.routing_mode}`);
+            }
+            Object.assign(this.state, preset);
+            // Ensure finish radius shading updates if end exists
+            try { this._updateFinishRadiusGeoJSON(); } catch {}
+        }
+
+        // More toggle stays usable; lock/unlock the advanced inputs instead.
+        if (this.advancedToggleBtn) {
+            this.advancedToggleBtn.disabled = false;
+            this.advancedToggleBtn.title = isCustom ? '' : 'Advanced options are locked. Select "custom" to edit.';
+            this.advancedToggleBtn.setAttribute('aria-disabled', 'false');
+        }
+
+        if (this.advancedLockNote) this.advancedLockNote.style.display = isCustom ? 'none' : '';
+
+        // Keep UI inputs in sync with state, and disable/enable advanced inputs.
+        this._syncAdvancedControlsToState();
+        if (this.advancedSection) {
+            this.advancedSection.classList.toggle('pf-routing-advanced-locked', !isCustom);
+            const controls = this.advancedSection.querySelectorAll('input, select, textarea, button');
+            controls.forEach((el) => {
+                if (el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement || el instanceof HTMLButtonElement) {
+                    el.disabled = !isCustom;
+                }
+            });
+        }
+    }
+
+    _syncAdvancedControlsToState() {
+        if (!this.advancedSection) return;
+        const nodes = this.advancedSection.querySelectorAll('[data-key]');
+        nodes.forEach((el) => {
+            const key = el.dataset.key;
+            if (!key || !(key in this.state)) return;
+            if (el instanceof HTMLInputElement && el.type === 'checkbox') {
+                el.checked = Boolean(this.state[key]);
+            } else if (el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement) {
+                el.value = String(this.state[key]);
+            }
+        });
+    }
+
+    _createAdvancedSection() {
+        const container = document.createElement('div');
+
+        const lockNote = document.createElement('div');
+        lockNote.className = 'pf-routing-advanced-note';
+        lockNote.textContent = 'Locked by routing mode. Select "custom" to edit advanced options.';
+        this.advancedLockNote = lockNote;
+        container.appendChild(lockNote);
+
+        container.appendChild(this._createCheckboxPanel(
+            'Avoid land crossings',
+            'avoid_land_crossings',
+            'If True, reject any candidate leg that crosses land'
+        ));
+
+        container.appendChild(this._createNumberPanel(
+            'Crank step (minutes)',
+            'crank_step',
+            { step: 1, min: 1, integer: true, helpText: 'Time step in minutes' }
+        ));
+
+        container.appendChild(this._createNumberPanel(
+            'Leg check spacing (nm)',
+            'leg_check_spacing_nm',
+            { step: 0.1, min: 0.1, integer: false, helpText: 'Sampling spacing (nautical miles) for land-crossing checks' }
+        ));
+
+        container.appendChild(this._createNumberPanel(
+            'Spread (degrees)',
+            'spread',
+            { step: 1, min: 0, integer: true, helpText: 'Heading search spread (degrees) around bearing-to-finish' }
+        ));
+
+        container.appendChild(this._createNumberPanel(
+            'Wake limit (degrees)',
+            'wake_lim',
+            { step: 1, min: 0, integer: true, helpText: 'Wake pruning limit (degrees)' }
+        ));
+
+        container.appendChild(this._createNumberPanel(
+            'Isochrone points',
+            'n_points',
+            { step: 1, min: 1, integer: true, helpText: 'Number of isochrone points to maintain' }
+        ));
+
+        container.appendChild(this._createNumberPanel(
+            'Finish radius (nm)',
+            'finish_size',
+            {
+                step: 0.1,
+                min: 0.1,
+                integer: false,
+                helpText: 'Finish radius (nautical miles)',
+                onValidChange: () => this._updateFinishRadiusGeoJSON()
+            }
+        ));
+
+        return container;
+    }
+
+    _createCheckboxPanel(title, key, helpText = '') {
+        const panel = document.createElement('div');
+        panel.className = 'pf-routing-panel';
+
+        panel.appendChild(this._createLabelRow(title, helpText));
+
+        const row = document.createElement('div');
+        row.style.display = 'flex';
+        row.style.alignItems = 'center';
+        row.style.gap = '8px';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = Boolean(this.state[key]);
+        checkbox.style.cursor = 'pointer';
+        checkbox.dataset.key = key;
+
+        checkbox.addEventListener('change', () => {
+            this.state[key] = checkbox.checked;
+        });
+
+        row.appendChild(checkbox);
+        panel.appendChild(row);
+        return panel;
+    }
+
+    _createNumberPanel(title, key, opts = {}) {
+        const { step = 1, min = undefined, integer = false, onValidChange = null, helpText = '' } = opts;
+
+        const panel = document.createElement('div');
+        panel.className = 'pf-routing-panel';
+
+        panel.appendChild(this._createLabelRow(title, helpText));
+
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.className = 'pf-routing-input';
+        input.step = String(step);
+        if (typeof min === 'number') input.min = String(min);
+        input.value = String(this.state[key]);
+        input.dataset.key = key;
+
+        const applyIfValid = (raw, { alertOnError } = { alertOnError: false }) => {
+            const current = this.state[key];
+            const next = integer ? parseInt(raw, 10) : parseFloat(raw);
+
+            const isFiniteNum = typeof next === 'number' && Number.isFinite(next);
+            const isIntOk = !integer || Number.isInteger(next);
+            const isMinOk = typeof min !== 'number' || next >= min;
+
+            if (!isFiniteNum || !isIntOk || !isMinOk) {
+                if (alertOnError) {
+                    console.error(`Invalid value for ${key}:`, raw);
+                    alert(`Invalid value for "${title}".`);
+                    // Revert display to last-known-good state value
+                    input.value = String(current);
+                }
+                return;
+            }
+
+            this.state[key] = next;
+            if (typeof onValidChange === 'function') {
+                try { onValidChange(next); } catch (e) { throw e; }
+            }
+        };
+
+        // Live update state when valid; on blur/commit, enforce with alert+revert.
+        input.addEventListener('input', () => applyIfValid(input.value, { alertOnError: false }));
+        input.addEventListener('change', () => applyIfValid(input.value, { alertOnError: true }));
+
+        panel.appendChild(input);
+        return panel;
+    }
+
+    _createLabelRow(title, helpText = '') {
+        const row = document.createElement('div');
+        row.style.display = 'flex';
+        row.style.alignItems = 'center';
+        row.style.justifyContent = 'space-between';
+        row.style.gap = '8px';
+        row.style.marginBottom = '0.35rem';
+
+        const label = document.createElement('div');
+        label.className = 'pf-routing-label';
+        label.textContent = title;
+        label.style.marginBottom = '0';
+
+        row.appendChild(label);
+
+        if (helpText) {
+            const info = document.createElement('span');
+            info.className = 'pf-routing-help';
+            info.textContent = 'ⓘ';
+            info.title = helpText;
+            info.setAttribute('aria-label', helpText);
+            info.tabIndex = 0;
+            row.appendChild(info);
+        }
+
+        return row;
     }
 
     _createLocationPanel(title, prefix) {
@@ -1355,7 +1720,10 @@ export class RoutingControl {
             return;
         }
 
-        const FINISH_RADIUS_NM = 5;
+        const FINISH_RADIUS_NM = this.state.finish_size;
+        if (typeof FINISH_RADIUS_NM !== 'number' || !Number.isFinite(FINISH_RADIUS_NM) || FINISH_RADIUS_NM <= 0) {
+            throw new Error(`Invalid finish_size: ${FINISH_RADIUS_NM}`);
+        }
         const radiusMeters = FINISH_RADIUS_NM * 1852;
         const ring = this._circleRing(this.state.end, radiusMeters, 96);
 
@@ -1397,7 +1765,15 @@ export class RoutingControl {
             init_time: this.state.initTimeIndex,
             lead_time_start: this.state.leadTimeStart,
             freq: this.state.frequency,
-            polar_file: this.state.polar_file
+            polar_file: this.state.polar_file,
+
+            crank_step: String(this.state.crank_step),
+            avoid_land_crossings: String(this.state.avoid_land_crossings),
+            leg_check_spacing_nm: String(this.state.leg_check_spacing_nm),
+            spread: String(this.state.spread),
+            wake_lim: String(this.state.wake_lim),
+            n_points: String(this.state.n_points),
+            finish_size: String(this.state.finish_size)
         });
 
         // Clear existing isochrone points for new route calculation

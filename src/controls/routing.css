@@ -25,6 +25,50 @@
     transition: transform .3s ease;
   }
   .pf-routing-wrap.hidden { display: none; }
+
+  /* =======================
+     MORE / LESS TOGGLER
+     ======================= */
+  .pf-routing-advanced {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+  .pf-routing-advanced-note {
+    color: rgba(255,255,255,0.85);
+    font-size: 12px;
+    line-height: 1.25;
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,.12);
+    background: rgba(255,255,255,.06);
+  }
+  .pf-routing-advanced.pf-routing-advanced-locked .pf-routing-panel {
+    opacity: 0.9;
+  }
+  .pf-routing-more {
+    width: 100%;
+  }
+  .pf-routing-help {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    border: none;
+    background: transparent;
+    color: rgba(255,255,255,.9);
+    font-size: 14px;
+    line-height: 1;
+    cursor: help;
+    user-select: none;
+    flex: 0 0 auto;
+    opacity: 0.9;
+  }
+  .pf-routing-help:hover,
+  .pf-routing-help:focus {
+    outline: none;
+    opacity: 1;
+  }
   
   /* =======================
      SIDEBAR (scrollable)
@@ -121,6 +165,12 @@
   .pf-routing-button:hover {
       transform: translateY(-1px);
       box-shadow: 0 3px 8px rgba(0,0,0,.2);
+  }
+  .pf-routing-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
   }
   
   .pf-routing-button.active {
