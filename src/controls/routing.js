@@ -19,6 +19,7 @@ export class RoutingControl {
         this.showLocalTime = true;
         this.routeData = null; // Store API response for time lookup
         this.isochronePointsByStep = new Map(); // Group isochrone points by step
+        this.isochroneFeaturesByStep = new Map(); // Cache computed isochrone line features per step (performance)
 
         // Markers
         this.startMarker = null;
@@ -57,6 +58,17 @@ export class RoutingControl {
         this.longPressTimer = null;
         this.touchStartPoint = null;
         this.initialMapCenter = null; // Track map center at start of long press
+    }
+
+    _yieldToUI() {
+        // Yield to the browser so it can paint/render between bursts of streamed messages.
+        // (Using a macrotask yield rather than rAF avoids intentionally “frame-batching”.)
+        return new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    _yieldToPaint() {
+        // Wait for the next frame so the user can actually see incremental updates.
+        return new Promise((resolve) => requestAnimationFrame(resolve));
     }
 
     onRouteLoaded(callback) {
@@ -985,6 +997,9 @@ export class RoutingControl {
         if (this.isochronePointsByStep && typeof this.isochronePointsByStep.clear === 'function') {
             this.isochronePointsByStep.clear();
         }
+        if (this.isochroneFeaturesByStep && typeof this.isochroneFeaturesByStep.clear === 'function') {
+            this.isochroneFeaturesByStep.clear();
+        }
 
         // Clear route layers (initial + result) and isochrones
         const resultSource = this.map.getSource('pf-result-source');
@@ -1373,6 +1388,7 @@ export class RoutingControl {
 
         // Clear existing isochrone points for new route calculation
         this.isochronePointsByStep.clear();
+        this.isochroneFeaturesByStep.clear();
         const isochroneSource = this.map.getSource('pf-isochrone-source');
         if (isochroneSource) {
             isochroneSource.setData({ type: 'FeatureCollection', features: [] });
@@ -1416,6 +1432,10 @@ export class RoutingControl {
                 throw new Error(`API Error: ${response.status} ${response.statusText}`);
             }
 
+            if (!response.body) {
+                throw new Error('API Error: response body is missing (stream unavailable)');
+            }
+
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let buffer = '';
@@ -1429,11 +1449,17 @@ export class RoutingControl {
                 // Keep the last partial line in the buffer
                 buffer = lines.pop(); 
 
-                for (const line of lines) {
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i];
                     if (!line.trim()) continue;
                     try {
                         const msg = JSON.parse(line);
                         this._handleRouteMessage(msg);
+                        // Force the browser to paint between streamed updates (step-by-step feel).
+                        // Only do this for progress messages to avoid delaying final result handling.
+                        if (msg && msg.type === 'progress') {
+                            await this._yieldToPaint();
+                        }
                     } catch (e) {
                         console.error('JSON parse error:', e);
                     }
@@ -1445,6 +1471,9 @@ export class RoutingControl {
                 try {
                     const msg = JSON.parse(buffer);
                     this._handleRouteMessage(msg);
+                    if (msg && msg.type === 'progress') {
+                        await this._yieldToPaint();
+                    }
                 } catch (e) {
                     console.error('Final JSON parse error:', e);
                 }
@@ -1486,6 +1515,7 @@ export class RoutingControl {
 
             // Clear accumulated isochrone points when initial route is found
             this.isochronePointsByStep.clear();
+            this.isochroneFeaturesByStep.clear();
             const isochroneSource = this.map.getSource('pf-isochrone-source');
             if (isochroneSource) {
                 isochroneSource.setData({ type: 'FeatureCollection', features: [] });
@@ -1640,16 +1670,15 @@ export class RoutingControl {
         }));
         this.isochronePointsByStep.get(step).push(...pointsWithCoords);
 
-        // Create contour line features for each step
-        const features = [];
-        for (const [stepNum, points] of this.isochronePointsByStep) {
-            if (points.length < 2) continue;
+        const buildFeaturesForStep = (stepNum, points) => {
+            if (!points || points.length < 2) return [];
 
             // Convert to [lon, lat] format for distance calculation
             const pointsAsCoords = points.map(p => [p.lon, p.lat]);
 
             // Order points using greedy nearest-neighbor algorithm
             const orderedPoints = this._orderByNearest(pointsAsCoords);
+            if (!orderedPoints.length || orderedPoints.length < 2) return [];
 
             // Split into multiple lines if any consecutive point gap is an outlier.
             // Rule: only join points when the gap is within 1 standard deviation of all gaps
@@ -1684,9 +1713,9 @@ export class RoutingControl {
             }
             if (current.length >= 2) segments.push(current);
 
-            // Emit a LineString per segment.
+            const out = [];
             for (let segIdx = 0; segIdx < segments.length; segIdx++) {
-                features.push({
+                out.push({
                     type: 'Feature',
                     geometry: {
                         type: 'LineString',
@@ -1697,6 +1726,19 @@ export class RoutingControl {
                         segment: segIdx
                     }
                 });
+            }
+            return out;
+        };
+
+        // Recompute only the updated step; reuse cached features for other steps.
+        const stepPoints = this.isochronePointsByStep.get(step);
+        this.isochroneFeaturesByStep.set(step, buildFeaturesForStep(step, stepPoints));
+
+        // Combine cached features across all steps
+        const features = [];
+        for (const stepFeatures of this.isochroneFeaturesByStep.values()) {
+            if (Array.isArray(stepFeatures) && stepFeatures.length) {
+                features.push(...stepFeatures);
             }
         }
 
