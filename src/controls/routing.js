@@ -16,7 +16,10 @@ export class RoutingControl {
             wake_lim: 20,
             n_points: 20,
             optimise_n_points: 40,
-            finish_size: 5.0
+            finish_size: 5.0,
+            twa_change_penalty: 0.02,
+            twa_change_threshold: 1.0,
+            tack_penalty: 0.5
         });
         // Presets used for non-custom routing modes (locked/read-only).
         this._ROUTING_PRESETS = Object.freeze({
@@ -28,7 +31,10 @@ export class RoutingControl {
                 wake_lim: 30,
                 n_points: 10,
                 optimise_n_points: 20,
-                finish_size: 5.0
+                finish_size: 5.0,
+                twa_change_penalty: 0.02,
+                twa_change_threshold: 1.0,
+                tack_penalty: 0.5
             }),
             'fast-coastal': Object.freeze({
                 crank_step: 60,
@@ -38,7 +44,10 @@ export class RoutingControl {
                 wake_lim: 30,
                 n_points: 10,
                 optimise_n_points: 20,
-                finish_size: 5.0
+                finish_size: 5.0,
+                twa_change_penalty: 0.02,
+                twa_change_threshold: 1.0,
+                tack_penalty: 0.5
             }),
             balanced: Object.freeze({
                 crank_step: 30,
@@ -48,7 +57,10 @@ export class RoutingControl {
                 wake_lim: 20,
                 n_points: 20,
                 optimise_n_points: 40,
-                finish_size: 5.0
+                finish_size: 5.0,
+                twa_change_penalty: 0.02,
+                twa_change_threshold: 1.0,
+                tack_penalty: 0.5
             }),
             'balanced-coastal': Object.freeze({
                 crank_step: 30,
@@ -58,7 +70,10 @@ export class RoutingControl {
                 wake_lim: 20,
                 n_points: 20,
                 optimise_n_points: 60,
-                finish_size: 5.0
+                finish_size: 5.0,
+                twa_change_penalty: 0.02,
+                twa_change_threshold: 1.0,
+                tack_penalty: 0.5
             }),
             accurate: Object.freeze({
                 crank_step: 30,
@@ -68,7 +83,10 @@ export class RoutingControl {
                 wake_lim: 15,
                 n_points: 30,
                 optimise_n_points: 60,
-                finish_size: 5.0
+                finish_size: 5.0,
+                twa_change_penalty: 0.02,
+                twa_change_threshold: 1.0,
+                tack_penalty: 0.5
             }),
             'accurate-coastal': Object.freeze({
                 crank_step: 30,
@@ -78,7 +96,10 @@ export class RoutingControl {
                 wake_lim: 15,
                 n_points: 30,
                 optimise_n_points: 100,
-                finish_size: 5.0
+                finish_size: 5.0,
+                twa_change_penalty: 0.02,
+                twa_change_threshold: 1.0,
+                tack_penalty: 0.5
             })
         });
         this.state = {
@@ -575,6 +596,24 @@ export class RoutingControl {
                 helpText: 'Finish radius (nautical miles)',
                 onValidChange: () => this._updateFinishRadiusGeoJSON()
             }
+        ));
+
+        container.appendChild(this._createNumberPanel(
+            'TWA Change Penalty',
+            'twa_change_penalty',
+            { step: 0.01, min: 0, integer: false, helpText: 'Penalty for changing TWA (True Wind Angle)' }
+        ));
+
+        container.appendChild(this._createNumberPanel(
+            'TWA Change Threshold',
+            'twa_change_threshold',
+            { step: 0.1, min: 0, integer: false, helpText: 'Threshold for TWA change penalty' }
+        ));
+
+        container.appendChild(this._createNumberPanel(
+            'Tack Penalty',
+            'tack_penalty',
+            { step: 0.1, min: 0, integer: false, helpText: 'Penalty for tacking/gybing (in minutes, if cost function uses time)' }
         ));
 
         return container;
@@ -1820,7 +1859,10 @@ export class RoutingControl {
             wake_lim: String(this.state.wake_lim),
             n_points: String(this.state.n_points),
             optimise_n_points: String(this.state.optimise_n_points),
-            finish_size: String(this.state.finish_size)
+            finish_size: String(this.state.finish_size),
+            twa_change_penalty: String(this.state.twa_change_penalty),
+            twa_change_threshold: String(this.state.twa_change_threshold),
+            tack_penalty: String(this.state.tack_penalty)
         });
 
         // Clear existing isochrone points for new route calculation
