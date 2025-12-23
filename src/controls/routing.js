@@ -9,17 +9,17 @@ export class RoutingControl {
         this.loadingOverlay = new LoadingOverlay();
         // Defaults used when in "custom" mode (and as initial values).
         this._ADV_DEFAULTS = Object.freeze({
-            crank_step: 60,
+            crank_step: 30,
             avoid_land_crossings: true,
-            leg_check_spacing_nm: 3.0,
+            leg_check_spacing_nm: 2.0,
             spread: 270,
             wake_lim: 20,
             n_points: 20,
             optimise_n_points: 40,
             finish_size: 5.0,
-            twa_change_penalty: 0.02,
-            twa_change_threshold: 1.0,
-            tack_penalty: 0.5
+            twa_change_penalty: 0.05,
+            twa_change_threshold: 5.0,
+            tack_penalty: 0.2
         });
         // Presets used for non-custom routing modes (locked/read-only).
         this._ROUTING_PRESETS = Object.freeze({
@@ -33,7 +33,7 @@ export class RoutingControl {
                 optimise_n_points: 20,
                 finish_size: 5.0,
                 twa_change_penalty: 0.02,
-                twa_change_threshold: 1.0,
+                twa_change_threshold: 5.0,
                 tack_penalty: 0.5
             }),
             'fast-coastal': Object.freeze({
@@ -45,8 +45,8 @@ export class RoutingControl {
                 n_points: 10,
                 optimise_n_points: 20,
                 finish_size: 5.0,
-                twa_change_penalty: 0.02,
-                twa_change_threshold: 1.0,
+                twa_change_penalty: 0.04,
+                twa_change_threshold: 5.0,
                 tack_penalty: 0.5
             }),
             balanced: Object.freeze({
@@ -58,9 +58,9 @@ export class RoutingControl {
                 n_points: 20,
                 optimise_n_points: 40,
                 finish_size: 5.0,
-                twa_change_penalty: 0.02,
-                twa_change_threshold: 1.0,
-                tack_penalty: 0.5
+                twa_change_penalty: 0.04,
+                twa_change_threshold: 5.0,
+                tack_penalty: 0.2
             }),
             'balanced-coastal': Object.freeze({
                 crank_step: 30,
@@ -72,8 +72,8 @@ export class RoutingControl {
                 optimise_n_points: 60,
                 finish_size: 5.0,
                 twa_change_penalty: 0.02,
-                twa_change_threshold: 1.0,
-                tack_penalty: 0.5
+                twa_change_threshold: 5.0,
+                tack_penalty: 0.2
             }),
             accurate: Object.freeze({
                 crank_step: 30,
@@ -85,8 +85,8 @@ export class RoutingControl {
                 optimise_n_points: 60,
                 finish_size: 5.0,
                 twa_change_penalty: 0.02,
-                twa_change_threshold: 1.0,
-                tack_penalty: 0.5
+                twa_change_threshold: 5.0,
+                tack_penalty: 0.2
             }),
             'accurate-coastal': Object.freeze({
                 crank_step: 30,
@@ -98,8 +98,8 @@ export class RoutingControl {
                 optimise_n_points: 100,
                 finish_size: 5.0,
                 twa_change_penalty: 0.02,
-                twa_change_threshold: 1.0,
-                tack_penalty: 0.5
+                twa_change_threshold: 5.0,
+                tack_penalty: 0.2
             })
         });
         this.state = {
