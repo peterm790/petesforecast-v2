@@ -15,6 +15,7 @@ export class RoutingControl {
             spread: 270,
             wake_lim: 20,
             n_points: 20,
+            optimise_n_points: 40,
             finish_size: 5.0
         });
         // Presets used for non-custom routing modes (locked/read-only).
@@ -26,6 +27,7 @@ export class RoutingControl {
                 spread: 120,
                 wake_lim: 30,
                 n_points: 10,
+                optimise_n_points: 20,
                 finish_size: 5.0
             }),
             'fast-coastal': Object.freeze({
@@ -35,6 +37,7 @@ export class RoutingControl {
                 spread: 120,
                 wake_lim: 30,
                 n_points: 10,
+                optimise_n_points: 20,
                 finish_size: 5.0
             }),
             balanced: Object.freeze({
@@ -44,6 +47,7 @@ export class RoutingControl {
                 spread: 180,
                 wake_lim: 20,
                 n_points: 20,
+                optimise_n_points: 40,
                 finish_size: 5.0
             }),
             'balanced-coastal': Object.freeze({
@@ -53,6 +57,7 @@ export class RoutingControl {
                 spread: 180,
                 wake_lim: 20,
                 n_points: 20,
+                optimise_n_points: 40,
                 finish_size: 5.0
             }),
             accurate: Object.freeze({
@@ -62,6 +67,7 @@ export class RoutingControl {
                 spread: 270,
                 wake_lim: 15,
                 n_points: 30,
+                optimise_n_points: 60,
                 finish_size: 5.0
             }),
             'accurate-coastal': Object.freeze({
@@ -71,6 +77,7 @@ export class RoutingControl {
                 spread: 270,
                 wake_lim: 15,
                 n_points: 30,
+                optimise_n_points: 60,
                 finish_size: 5.0
             })
         });
@@ -82,7 +89,7 @@ export class RoutingControl {
             initTimeIndex: -1, // Default to latest
             frequency: '1hr', // Default API frequency
             polar_file: 'volvo70',
-            routing_mode: 'custom',
+            routing_mode: 'fast',
 
             // --- Routing API advanced defaults ---
             ...this._ADV_DEFAULTS
@@ -92,6 +99,9 @@ export class RoutingControl {
         this.isochronePointsByStep = new Map(); // Group isochrone points by step
         this.isochroneFeaturesByStep = new Map(); // Cache computed isochrone line features per step (performance)
         this.eventSource = null; // SSE stream for routing progress/results
+
+        // Ensure the default routing mode applies its preset values immediately.
+        this._applyRoutingModeLock();
 
         // Markers
         this.startMarker = null;
@@ -1773,6 +1783,7 @@ export class RoutingControl {
             spread: String(this.state.spread),
             wake_lim: String(this.state.wake_lim),
             n_points: String(this.state.n_points),
+            optimise_n_points: String(this.state.optimise_n_points),
             finish_size: String(this.state.finish_size)
         });
 
@@ -1888,6 +1899,17 @@ export class RoutingControl {
 
             this._drawRoute(msg.data, true); // true = isInitial
         } else if (msg.type === 'result') {
+            // Final optimisation complete: remove any optimisation isochrones and leave just the route.
+            if (this.isochronePointsByStep && typeof this.isochronePointsByStep.clear === 'function') {
+                this.isochronePointsByStep.clear();
+            }
+            if (this.isochroneFeaturesByStep && typeof this.isochroneFeaturesByStep.clear === 'function') {
+                this.isochroneFeaturesByStep.clear();
+            }
+            const isochroneSource = this.map.getSource('pf-isochrone-source');
+            if (isochroneSource) {
+                isochroneSource.setData({ type: 'FeatureCollection', features: [] });
+            }
             this._drawRoute(msg.data, false); // false = final result
         }
     }
