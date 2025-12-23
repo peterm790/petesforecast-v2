@@ -193,9 +193,10 @@ export function formatUTC(date) {
     const dayName = days[date.getUTCDay()];
     const dd = String(date.getUTCDate()).padStart(2, '0');
     const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const yyyy = date.getUTCFullYear();
     const hh = String(date.getUTCHours()).padStart(2, '0');
     const mi = String(date.getUTCMinutes()).padStart(2, '0');
-    return `${dayName} (${dd}/${mm}) ${hh}:${mi} UTC`;
+    return `${dayName} (${dd}/${mm}/${yyyy}) ${hh}:${mi} UTC`;
 }
 
 export function formatLocal(date) {
@@ -203,6 +204,7 @@ export function formatLocal(date) {
     const dayName = days[date.getDay()];
     const dd = String(date.getDate()).padStart(2, '0');
     const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const yyyy = date.getFullYear();
     const hh = String(date.getHours()).padStart(2, '0');
     const mi = String(date.getMinutes()).padStart(2, '0');
     const offsetMin = -date.getTimezoneOffset();
@@ -211,7 +213,7 @@ export function formatLocal(date) {
     const offH = Math.floor(abs / 60);
     const offM = abs % 60;
     const tz = offM ? `GMT${sign}${offH}:${String(offM).padStart(2, '0')}` : `GMT${sign}${offH}`;
-    return `${dayName} (${dd}/${mm}) ${hh}:${mi} ${tz}`;
+    return `${dayName} (${dd}/${mm}/${yyyy}) ${hh}:${mi} ${tz}`;
 }
 
 // Get rough location from IP geolocation (country/continent level)

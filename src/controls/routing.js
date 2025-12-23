@@ -1254,18 +1254,20 @@ export class RoutingControl {
             });
         }
 
-        // -- Isochrone Lines Source & Layer --
-        if (!this.map.getSource('pf-isochrone-source')) {
-            this.map.addSource('pf-isochrone-source', {
+        // -- Isochrone (initial phase) Lines Source & Layer --
+        if (!this.map.getSource('pf-isochrone-lines-source')) {
+            this.map.addSource('pf-isochrone-lines-source', {
                 type: 'geojson',
                 data: { type: 'FeatureCollection', features: [] }
             });
         }
+        // Back-compat: if an older build added a layer with this id but a different source/type, remove it first.
+        if (this.map.getLayer('pf-isochrone-lines')) this.map.removeLayer('pf-isochrone-lines');
         if (!this.map.getLayer('pf-isochrone-lines')) {
             this.map.addLayer({
                 id: 'pf-isochrone-lines',
                 type: 'line',
-                source: 'pf-isochrone-source',
+                source: 'pf-isochrone-lines-source',
                 layout: {
                     'line-join': 'round',
                     'line-cap': 'round'
@@ -1278,7 +1280,33 @@ export class RoutingControl {
                         0.5   // Lightness: 50%
                     ],
                     'line-width': 2,
-                    'line-opacity': 0.9  // Higher opacity for better visibility
+                    'line-opacity': 0.9
+                }
+            });
+        }
+
+        // -- Isochrone (optimisation phase) Points Source & Layer --
+        if (!this.map.getSource('pf-isochrone-points-source')) {
+            this.map.addSource('pf-isochrone-points-source', {
+                type: 'geojson',
+                data: { type: 'FeatureCollection', features: [] }
+            });
+        }
+        if (this.map.getLayer('pf-isochrone-dots')) this.map.removeLayer('pf-isochrone-dots');
+        if (!this.map.getLayer('pf-isochrone-dots')) {
+            this.map.addLayer({
+                id: 'pf-isochrone-dots',
+                type: 'circle',
+                source: 'pf-isochrone-points-source',
+                paint: {
+                    'circle-radius': 2.5,
+                    'circle-color': [
+                        'hsl',
+                        ['*', ['/', ['get', 'step'], 150], 360],
+                        0.9,
+                        0.5
+                    ],
+                    'circle-opacity': 0.85
                 }
             });
         }
@@ -1314,6 +1342,12 @@ export class RoutingControl {
         if (this.map.getLayer('pf-routing-bbox')) this.map.removeLayer('pf-routing-bbox');
         if (this.map.getLayer('pf-routing-bbox-outline')) this.map.removeLayer('pf-routing-bbox-outline');
         if (this.map.getSource('pf-routing-source')) this.map.removeSource('pf-routing-source');
+
+        if (this.map.getLayer('pf-isochrone-dots')) this.map.removeLayer('pf-isochrone-dots');
+        if (this.map.getLayer('pf-isochrone-lines')) this.map.removeLayer('pf-isochrone-lines'); // older builds
+        if (this.map.getSource('pf-isochrone-lines-source')) this.map.removeSource('pf-isochrone-lines-source');
+        if (this.map.getSource('pf-isochrone-points-source')) this.map.removeSource('pf-isochrone-points-source');
+        if (this.map.getSource('pf-isochrone-source')) this.map.removeSource('pf-isochrone-source'); // legacy
 
         if (this.map.getLayer('pf-result-line')) this.map.removeLayer('pf-result-line');
         if (this.map.getSource('pf-result-source')) this.map.removeSource('pf-result-source');
@@ -1397,8 +1431,10 @@ export class RoutingControl {
         const initialSource = this.map.getSource('pf-initial-route-source');
         if (initialSource) initialSource.setData({ type: 'FeatureCollection', features: [] });
 
-        const isochroneSource = this.map.getSource('pf-isochrone-source');
-        if (isochroneSource) isochroneSource.setData({ type: 'FeatureCollection', features: [] });
+        const isoLineSource = this.map.getSource('pf-isochrone-lines-source');
+        if (isoLineSource) isoLineSource.setData({ type: 'FeatureCollection', features: [] });
+        const isoPointSource = this.map.getSource('pf-isochrone-points-source');
+        if (isoPointSource) isoPointSource.setData({ type: 'FeatureCollection', features: [] });
 
         // Clear boat position marker
         const boatSource = this.map.getSource('pf-boat-pos-source');
@@ -1790,10 +1826,10 @@ export class RoutingControl {
         // Clear existing isochrone points for new route calculation
         this.isochronePointsByStep.clear();
         this.isochroneFeaturesByStep.clear();
-        const isochroneSource = this.map.getSource('pf-isochrone-source');
-        if (isochroneSource) {
-            isochroneSource.setData({ type: 'FeatureCollection', features: [] });
-        }
+        const isoLineSource = this.map.getSource('pf-isochrone-lines-source');
+        if (isoLineSource) isoLineSource.setData({ type: 'FeatureCollection', features: [] });
+        const isoPointSource = this.map.getSource('pf-isochrone-points-source');
+        if (isoPointSource) isoPointSource.setData({ type: 'FeatureCollection', features: [] });
 
         // Close any previous stream before starting a new one
         this._closeRouteStream();
@@ -1889,13 +1925,13 @@ export class RoutingControl {
             this._hasReceivedInitial = true;
             this.loadingOverlay.progressEl.textContent = "Optimising...";
 
-            // Clear accumulated isochrone points when initial route is found
+            // Switch phase: clear initial-phase isochrone lines and reset caches for optimisation dots.
             this.isochronePointsByStep.clear();
             this.isochroneFeaturesByStep.clear();
-            const isochroneSource = this.map.getSource('pf-isochrone-source');
-            if (isochroneSource) {
-                isochroneSource.setData({ type: 'FeatureCollection', features: [] });
-            }
+            const isoLineSource = this.map.getSource('pf-isochrone-lines-source');
+            if (isoLineSource) isoLineSource.setData({ type: 'FeatureCollection', features: [] });
+            const isoPointSource = this.map.getSource('pf-isochrone-points-source');
+            if (isoPointSource) isoPointSource.setData({ type: 'FeatureCollection', features: [] });
 
             this._drawRoute(msg.data, true); // true = isInitial
         } else if (msg.type === 'result') {
@@ -1906,10 +1942,10 @@ export class RoutingControl {
             if (this.isochroneFeaturesByStep && typeof this.isochroneFeaturesByStep.clear === 'function') {
                 this.isochroneFeaturesByStep.clear();
             }
-            const isochroneSource = this.map.getSource('pf-isochrone-source');
-            if (isochroneSource) {
-                isochroneSource.setData({ type: 'FeatureCollection', features: [] });
-            }
+            const isoLineSource = this.map.getSource('pf-isochrone-lines-source');
+            if (isoLineSource) isoLineSource.setData({ type: 'FeatureCollection', features: [] });
+            const isoPointSource = this.map.getSource('pf-isochrone-points-source');
+            if (isoPointSource) isoPointSource.setData({ type: 'FeatureCollection', features: [] });
             this._drawRoute(msg.data, false); // false = final result
         }
     }
@@ -2038,12 +2074,15 @@ export class RoutingControl {
     }
 
     _drawIsochrones(isochronePoints, step) {
-        // Draw isochrone contour lines on the map
+        // During initial route calculation (pre-`initial`), render isochrones as lines.
+        // During optimisation (post-`initial`), render isochrones as points (dots).
         // isochronePoints should be an array of [lat, lon] arrays
 
         if (!Array.isArray(isochronePoints) || isochronePoints.length === 0) {
             return;
         }
+
+        const mode = this._hasReceivedInitial ? 'points' : 'lines';
 
         // Group points by step
         if (!this.isochronePointsByStep.has(step)) {
@@ -2057,7 +2096,22 @@ export class RoutingControl {
         }));
         this.isochronePointsByStep.get(step).push(...pointsWithCoords);
 
-        const buildFeaturesForStep = (stepNum, points) => {
+        const buildPointFeaturesForStep = (stepNum, points) => {
+            if (!points || points.length === 0) return [];
+            return points.map((p, idx) => ({
+                type: 'Feature',
+                geometry: {
+                    type: 'Point',
+                    coordinates: [p.lon, p.lat]
+                },
+                properties: {
+                    step: stepNum,
+                    idx
+                }
+            }));
+        };
+
+        const buildLineFeaturesForStep = (stepNum, points) => {
             if (!points || points.length < 2) return [];
 
             // Convert to [lon, lat] format for distance calculation
@@ -2119,7 +2173,12 @@ export class RoutingControl {
 
         // Recompute only the updated step; reuse cached features for other steps.
         const stepPoints = this.isochronePointsByStep.get(step);
-        this.isochroneFeaturesByStep.set(step, buildFeaturesForStep(step, stepPoints));
+        this.isochroneFeaturesByStep.set(
+            step,
+            mode === 'points'
+                ? buildPointFeaturesForStep(step, stepPoints)
+                : buildLineFeaturesForStep(step, stepPoints)
+        );
 
         // Combine cached features across all steps
         const features = [];
@@ -2129,7 +2188,8 @@ export class RoutingControl {
             }
         }
 
-        const isochroneSource = this.map.getSource('pf-isochrone-source');
+        const sourceId = mode === 'points' ? 'pf-isochrone-points-source' : 'pf-isochrone-lines-source';
+        const isochroneSource = this.map.getSource(sourceId);
         if (isochroneSource) {
             isochroneSource.setData({
                 type: 'FeatureCollection',
