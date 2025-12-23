@@ -53,11 +53,11 @@ export class RoutingControl {
             'balanced-coastal': Object.freeze({
                 crank_step: 30,
                 avoid_land_crossings: true,
-                leg_check_spacing_nm: 5.0,
+                leg_check_spacing_nm: 2.0,
                 spread: 180,
                 wake_lim: 20,
                 n_points: 20,
-                optimise_n_points: 40,
+                optimise_n_points: 60,
                 finish_size: 5.0
             }),
             accurate: Object.freeze({
@@ -73,11 +73,11 @@ export class RoutingControl {
             'accurate-coastal': Object.freeze({
                 crank_step: 30,
                 avoid_land_crossings: true,
-                leg_check_spacing_nm: 2.0,
+                leg_check_spacing_nm: 1.0,
                 spread: 270,
                 wake_lim: 15,
                 n_points: 30,
-                optimise_n_points: 60,
+                optimise_n_points: 100,
                 finish_size: 5.0
             })
         });
