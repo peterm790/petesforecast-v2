@@ -1977,17 +1977,10 @@ export class RoutingControl {
 
             this._drawRoute(msg.data, true); // true = isInitial
         } else if (msg.type === 'result') {
-            // Final optimisation complete: remove any optimisation isochrones and leave just the route.
-            if (this.isochronePointsByStep && typeof this.isochronePointsByStep.clear === 'function') {
-                this.isochronePointsByStep.clear();
-            }
-            if (this.isochroneFeaturesByStep && typeof this.isochroneFeaturesByStep.clear === 'function') {
-                this.isochroneFeaturesByStep.clear();
-            }
-            const isoLineSource = this.map.getSource('pf-isochrone-lines-source');
-            if (isoLineSource) isoLineSource.setData({ type: 'FeatureCollection', features: [] });
-            const isoPointSource = this.map.getSource('pf-isochrone-points-source');
-            if (isoPointSource) isoPointSource.setData({ type: 'FeatureCollection', features: [] });
+            // Final optimisation complete.
+            // We keep the optimisation isochrones (dots) so the user can inspect them with the time slider.
+            // (Previously we cleared them here)
+            
             this._drawRoute(msg.data, false); // false = final result
         }
     }
@@ -2342,6 +2335,51 @@ export class RoutingControl {
         
         // Update boat position marker
         if (closestPoint) {
+            // Highlight isochrones/dots for the current step
+            const currentStep = this.routeData.indexOf(closestPoint);
+            if (currentStep >= 0) {
+                // Determine the paint property for highlighting
+                const colorExpr = [
+                    'case',
+                    ['==', ['get', 'step'], currentStep],
+                    '#ff0000', // Highlight color (Red)
+                    [
+                        'hsl',
+                        ['*', ['/', ['get', 'step'], 150], 360],
+                        0.9,
+                        0.5
+                    ]
+                ];
+
+                if (this.map.getLayer('pf-isochrone-dots')) {
+                    this.map.setPaintProperty('pf-isochrone-dots', 'circle-color', colorExpr);
+                    // Also make highlighted dots slightly larger and on top if possible?
+                    // We can bump radius for highlighted ones
+                    this.map.setPaintProperty('pf-isochrone-dots', 'circle-radius', [
+                        'case',
+                        ['==', ['get', 'step'], currentStep],
+                        4,   // Larger radius for current step
+                        2.5  // Default radius
+                    ]);
+                    this.map.setPaintProperty('pf-isochrone-dots', 'circle-opacity', [
+                        'case',
+                        ['==', ['get', 'step'], currentStep],
+                        1.0, // Fully opaque
+                        0.85
+                    ]);
+                }
+                // Also update lines if they exist (e.g. initial phase debugging)
+                if (this.map.getLayer('pf-isochrone-lines')) {
+                    this.map.setPaintProperty('pf-isochrone-lines', 'line-color', colorExpr);
+                    this.map.setPaintProperty('pf-isochrone-lines', 'line-width', [
+                        'case',
+                        ['==', ['get', 'step'], currentStep],
+                        4,
+                        2
+                    ]);
+                }
+            }
+
             const source = this.map.getSource('pf-boat-pos-source');
             if (source) {
                 source.setData({
