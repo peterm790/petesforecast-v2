@@ -78,7 +78,7 @@ export class RoutingControl {
             accurate: Object.freeze({
                 crank_step: 30,
                 avoid_land_crossings: false,
-                leg_check_spacing_nm: 2.0,
+                leg_check_spacing_nm: 1.0,
                 spread: 270,
                 wake_lim: 15,
                 n_points: 30,
@@ -584,6 +584,12 @@ export class RoutingControl {
             'Isochrone points',
             'n_points',
             { step: 1, min: 1, integer: true, helpText: 'Number of isochrone points to maintain' }
+        ));
+
+        container.appendChild(this._createNumberPanel(
+            'Optimise points',
+            'optimise_n_points',
+            { step: 1, min: 1, integer: true, helpText: 'Maximum number of isochrone points to enforce during optimisation phase' }
         ));
 
         container.appendChild(this._createNumberPanel(
