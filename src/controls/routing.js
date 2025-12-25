@@ -10,7 +10,7 @@ export class RoutingControl {
         // Defaults used when in "custom" mode (and as initial values).
         this._ADV_DEFAULTS = Object.freeze({
             crank_step: 30,
-            avoid_land_crossings: true,
+            avoid_land_crossings: 'strict',
             leg_check_spacing_nm: 2.0,
             spread: 270,
             wake_lim: 20,
@@ -25,7 +25,7 @@ export class RoutingControl {
         this._ROUTING_PRESETS = Object.freeze({
             fast: Object.freeze({
                 crank_step: 60,
-                avoid_land_crossings: false,
+                avoid_land_crossings: 'point',
                 leg_check_spacing_nm: 5.0,
                 spread: 120,
                 wake_lim: 30,
@@ -38,7 +38,7 @@ export class RoutingControl {
             }),
             'fast-coastal': Object.freeze({
                 crank_step: 60,
-                avoid_land_crossings: true,
+                avoid_land_crossings: 'step',
                 leg_check_spacing_nm: 5.0,
                 spread: 120,
                 wake_lim: 30,
@@ -51,7 +51,7 @@ export class RoutingControl {
             }),
             balanced: Object.freeze({
                 crank_step: 30,
-                avoid_land_crossings: false,
+                avoid_land_crossings: 'point',
                 leg_check_spacing_nm: 5.0,
                 spread: 180,
                 wake_lim: 20,
@@ -64,7 +64,7 @@ export class RoutingControl {
             }),
             'balanced-coastal': Object.freeze({
                 crank_step: 30,
-                avoid_land_crossings: true,
+                avoid_land_crossings: 'strict',
                 leg_check_spacing_nm: 2.0,
                 spread: 180,
                 wake_lim: 20,
@@ -77,7 +77,7 @@ export class RoutingControl {
             }),
             accurate: Object.freeze({
                 crank_step: 30,
-                avoid_land_crossings: false,
+                avoid_land_crossings: 'point',
                 leg_check_spacing_nm: 1.0,
                 spread: 270,
                 wake_lim: 15,
@@ -90,7 +90,7 @@ export class RoutingControl {
             }),
             'accurate-coastal': Object.freeze({
                 crank_step: 30,
-                avoid_land_crossings: true,
+                avoid_land_crossings: 'strict',
                 leg_check_spacing_nm: 1.0,
                 spread: 270,
                 wake_lim: 15,
@@ -550,10 +550,15 @@ export class RoutingControl {
         this.advancedLockNote = lockNote;
         container.appendChild(lockNote);
 
-        container.appendChild(this._createCheckboxPanel(
+        container.appendChild(this._createSelectPanel(
             'Avoid land crossings',
             'avoid_land_crossings',
-            'If True, reject any candidate leg that crosses land'
+            [
+                { value: 'point', label: 'point' },
+                { value: 'step', label: 'step' },
+                { value: 'strict', label: 'strict' }
+            ],
+            "point: validate only start+end points (does not detect crossings between them). step: sample intermediate points along the leg (fast, can miss thin crossings). strict: reject if ANY intersected land-sea-mask grid cell is land (conservative/slower)."
         ));
 
         container.appendChild(this._createNumberPanel(
@@ -648,6 +653,35 @@ export class RoutingControl {
 
         row.appendChild(checkbox);
         panel.appendChild(row);
+        return panel;
+    }
+
+    _createSelectPanel(title, key, options, helpText = '') {
+        const panel = document.createElement('div');
+        panel.className = 'pf-routing-panel';
+
+        panel.appendChild(this._createLabelRow(title, helpText));
+
+        const select = document.createElement('select');
+        select.className = 'pf-routing-input';
+        select.style.cursor = 'pointer';
+        select.dataset.key = key;
+
+        options.forEach(opt => {
+            const option = document.createElement('option');
+            option.value = opt.value;
+            option.textContent = opt.label;
+            if (this.state[key] === opt.value) {
+                option.selected = true;
+            }
+            select.appendChild(option);
+        });
+
+        select.addEventListener('change', () => {
+            this.state[key] = select.value;
+        });
+
+        panel.appendChild(select);
         return panel;
     }
 
