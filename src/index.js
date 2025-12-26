@@ -10,7 +10,6 @@ import { MenuBar } from '@menu_bar/menubar.js';
 import '@menu_bar/menubar.css';
 import { TimeSlider } from '@time_slider/timeslider.js';
 import '@time_slider/timeslider.css';
-import { LoadingOverlay } from './loading_overlay/loading.js';
 import './loading_overlay/loading.css';
 import { DataCache } from './data/cache.js';
 import weatherVariables from './assets/weather_variables.json';
@@ -365,9 +364,7 @@ async function renderFromCache(state, leadHours) {
     }
 }
 
-// Loading overlay and data cache (declared early to avoid TDZ in callbacks)
-const overlay = new LoadingOverlay();
-overlay.mount(document.body);
+// Data cache (declared early to avoid TDZ in callbacks)
 const dataCache = new DataCache({ maxConcurrency: 8, interBatchDelayMs: 50 });
 let isCacheReady = false;
 let currentLeadHours = 0;
@@ -439,7 +436,7 @@ async function preloadAll(state) {
     const initialLeads = leads.filter(h => h <= 12);
     const bgLeads = leads.filter(h => h > 12);
 
-    // --- Phase 1: Foreground Load (Blocking Overlay) ---
+    // --- Phase 1: Foreground Load ---
     const initialMissing = variablesAll.reduce((accVars, variable) => accVars + (
         initialLeads.reduce((accLeads, lead) => accLeads + (dataCache.get(variable, lead, initKey) ? 0 : 1), 0)
     ), 0);
@@ -448,12 +445,6 @@ async function preloadAll(state) {
     updateTimeSliderConstraint(state, leads);
 
     if (initialMissing > 0 && myToken === preloadToken) {
-        overlay.show(initialLeads.length);
-        // Calculates already done frames for overlay tick base
-        const initialTotalFrames = initialLeads.length * varsCount;
-        const initialDoneFrames = initialTotalFrames - initialMissing;
-        overlay.tick(Math.floor(initialDoneFrames / varsCount));
-
         try {
             await dataCache.preload({
                 variables: variablesAll,
@@ -461,12 +452,10 @@ async function preloadAll(state) {
                 leads: initialLeads,
                 buildUrl: (variable, leadsChunk) => buildMultiUrl(variable, leadsChunk, initKey),
                 fetchData: (url) => fetchFrames(url),
-                onProgress: (doneInPreload, totalInPreload) => {
+                onProgress: () => {
                     if (myToken !== preloadToken) return;
-                    // Calculates global progress for this phase.
-                    // Re-counts total cached frames to ensure accuracy for the overlay, as dataCache.preload reports relative progress.
-                    const currentDone = countCachedFrames(variablesAll, initKey, initialLeads);
-                    overlay.tick(Math.floor(currentDone / varsCount));
+                    // Keep slider constraint tight while the foreground frames arrive.
+                    updateTimeSliderConstraint(state, leads);
                 },
                 chunkSize: LEAD_CHUNK_SIZE
             });
@@ -482,7 +471,6 @@ async function preloadAll(state) {
     isCacheReady = true;
     updateTimeSliderConstraint(state, leads); // Should cover initialLeads now
     renderFromCache(state, currentLeadHours);
-    overlay.hide();
 
     // --- Phase 2: Background Load (Non-blocking) ---
     if (bgLeads.length > 0) {

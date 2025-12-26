@@ -32,13 +32,13 @@ export class RoutingControl {
                 n_points: 10,
                 optimise_n_points: 20,
                 finish_size: 5.0,
-                twa_change_penalty: 0.02,
+                twa_change_penalty: 0.04,
                 twa_change_threshold: 5.0,
-                tack_penalty: 0.5
+                tack_penalty: 0.2
             }),
             'fast-coastal': Object.freeze({
                 crank_step: 60,
-                avoid_land_crossings: 'step',
+                avoid_land_crossings: 'strict',
                 leg_check_spacing_nm: 5.0,
                 spread: 120,
                 wake_lim: 30,
@@ -47,20 +47,20 @@ export class RoutingControl {
                 finish_size: 5.0,
                 twa_change_penalty: 0.04,
                 twa_change_threshold: 5.0,
-                tack_penalty: 0.5
+                tack_penalty: 0.2
             }),
             balanced: Object.freeze({
                 crank_step: 30,
                 avoid_land_crossings: 'point',
-                leg_check_spacing_nm: 5.0,
+                leg_check_spacing_nm: 2.0,
                 spread: 180,
                 wake_lim: 20,
-                n_points: 20,
-                optimise_n_points: 40,
+                n_points: 15,
+                optimise_n_points: 30,
                 finish_size: 5.0,
-                twa_change_penalty: 0.04,
+                twa_change_penalty: 0.02,
                 twa_change_threshold: 5.0,
-                tack_penalty: 0.2
+                tack_penalty: 0.1
             }),
             'balanced-coastal': Object.freeze({
                 crank_step: 30,
@@ -68,12 +68,12 @@ export class RoutingControl {
                 leg_check_spacing_nm: 2.0,
                 spread: 180,
                 wake_lim: 20,
-                n_points: 20,
-                optimise_n_points: 60,
+                n_points: 15,
+                optimise_n_points: 30,
                 finish_size: 5.0,
                 twa_change_penalty: 0.02,
                 twa_change_threshold: 5.0,
-                tack_penalty: 0.2
+                tack_penalty: 0.1
             }),
             accurate: Object.freeze({
                 crank_step: 30,
@@ -86,7 +86,7 @@ export class RoutingControl {
                 finish_size: 5.0,
                 twa_change_penalty: 0.02,
                 twa_change_threshold: 5.0,
-                tack_penalty: 0.2
+                tack_penalty: 0.1
             }),
             'accurate-coastal': Object.freeze({
                 crank_step: 30,
@@ -95,11 +95,11 @@ export class RoutingControl {
                 spread: 270,
                 wake_lim: 15,
                 n_points: 30,
-                optimise_n_points: 100,
+                optimise_n_points: 60,
                 finish_size: 5.0,
                 twa_change_penalty: 0.02,
                 twa_change_threshold: 5.0,
-                tack_penalty: 0.2
+                tack_penalty: 0.1
             })
         });
         this.state = {
