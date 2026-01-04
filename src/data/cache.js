@@ -6,9 +6,25 @@ export class DataCache {
         this.batchSize = options.batchSize || 2;
         this.interBatchDelayMs = typeof options.interBatchDelayMs === 'number' ? options.interBatchDelayMs : 150;
         this.cache = new Map(); // key: `${initKey}|${variable}|${lead}` -> rasterData
+		this._tokenControllers = new Map(); // token -> AbortController
     }
 
-    abortAll() { /* no-op: preloads no longer share a global controller */ }
+	abortAll() {
+		// Abort all active token controllers
+		for (const [, controller] of this._tokenControllers) {
+			try { controller.abort(); } catch {}
+		}
+		this._tokenControllers.clear();
+	}
+
+	abortToken(token) {
+		if (!token && token !== 0) return;
+		const controller = this._tokenControllers.get(token);
+		if (controller) {
+			try { controller.abort(); } catch {}
+			this._tokenControllers.delete(token);
+		}
+	}
 
     clear() {
         this.cache.clear();
@@ -18,12 +34,23 @@ export class DataCache {
         return this.cache.get(`${initKey}|${variable}|${lead}`);
     }
 
-    async preload({ variables, initKey, leads, buildUrl, fetchData, onProgress, chunkSize = 12 }) {
+	async preload({ variables, initKey, leads, buildUrl, fetchData, onProgress, chunkSize = 12, token = undefined }) {
         if (!Array.isArray(variables) || variables.length === 0 || !Array.isArray(leads) || leads.length === 0) {
             throw new Error('preload: invalid arguments');
         }
-        // local (unused) signal placeholder; we don't cancel across preloads
-        const signal = undefined;
+		// Per-preload controller for cancellation
+		let controller = undefined;
+		let signal = undefined;
+		if (token || token === 0) {
+			controller = new AbortController();
+			signal = controller.signal;
+			// If an older controller exists for this token, abort and replace
+			const old = this._tokenControllers.get(token);
+			if (old) {
+				try { old.abort(); } catch {}
+			}
+			this._tokenControllers.set(token, controller);
+		}
         
         // Build chunked tasks only for missing items
         const tasks = [];
@@ -64,16 +91,27 @@ export class DataCache {
         };
 
         const queue = tasks.slice();
-        await runBatches(queue);
+		try {
+			await runBatches(queue);
+		} finally {
+			// Clean up controller for this token
+			if (token || token === 0) {
+				// Only delete if the same controller is still stored
+				const c = this._tokenControllers.get(token);
+				if (c === controller) {
+					this._tokenControllers.delete(token);
+				}
+			}
+		}
 
         // Single retry pass for failed chunks
-        if (failedChunks.length > 0) {
+		if (failedChunks.length > 0 && (!signal || !signal.aborted)) {
             const retryQueue = failedChunks.slice();
             // brief backoff before retry
             await new Promise(resolve => setTimeout(resolve, Math.max(150, this.interBatchDelayMs)));
             // Clear collector for potential subsequent failures (not retried again)
             failedChunks.length = 0;
-            await runBatches(retryQueue);
+			await runBatches(retryQueue);
         }
     }
 

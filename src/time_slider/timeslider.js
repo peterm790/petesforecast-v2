@@ -33,6 +33,7 @@ export class TimeSlider {
         this.bgLoading = { active: false, done: 0, total: 0 };
         this.maxPlayableIndex = Infinity;
         this.useLocalTime = false;
+		this.inlineErrorText = '';
     }
 
     setAvailableRange(maxIndex) {
@@ -51,6 +52,11 @@ export class TimeSlider {
         this._updateLabel();
     }
 
+	setInlineError(text) {
+		this.inlineErrorText = typeof text === 'string' ? text : '';
+		this._updateLabel();
+	}
+
     mount(target) {
         const host = target || this.mountTarget || document.body;
         if (!host) throw new Error('TimeSlider: no mount target provided');
@@ -67,12 +73,12 @@ export class TimeSlider {
         label.textContent = '';
 
         const row = document.createElement('div');
-        row.className = 'pf-timeslider-row';
+		row.className = 'pf-timeslider-row pf-no-edges';
 
-        const minLabel = document.createElement('div');
-        minLabel.className = 'pf-timeslider-edge pf-timeslider-min';
-        const maxLabel = document.createElement('div');
-        maxLabel.className = 'pf-timeslider-edge pf-timeslider-max';
+		const minLabel = document.createElement('div');
+		minLabel.className = 'pf-timeslider-edge pf-timeslider-min';
+		const maxLabel = document.createElement('div');
+		maxLabel.className = 'pf-timeslider-edge pf-timeslider-max';
 
         const input = document.createElement('input');
         input.type = 'range';
@@ -142,12 +148,10 @@ export class TimeSlider {
             this._markLastActive('slider');
         });
 
-        // Row order: min | prev | slider | next | max
-        row.appendChild(minLabel);
+		// Row order without edge labels: prev | slider | next
         row.appendChild(prevBtn);
         row.appendChild(input);
         row.appendChild(nextBtn);
-        row.appendChild(maxLabel);
 
         wrap.appendChild(label);
         wrap.appendChild(row);
@@ -250,8 +254,8 @@ export class TimeSlider {
         this.slider.max = String(maxIndex);
         this.slider.min = '0';
         this.slider.step = '1';
-        this.minLabel.textContent = `${this.availableHours[0] || 1}`;
-        this.maxLabel.textContent = `${this.availableHours[maxIndex]}`;
+		if (this.minLabel) this.minLabel.textContent = `${this.availableHours[0] || 1}`;
+		if (this.maxLabel) this.maxLabel.textContent = `${this.availableHours[maxIndex]}`;
         this._updateTrackProgress();
     }
     
@@ -298,6 +302,12 @@ export class TimeSlider {
             spinner.className = 'pf-timeslider-spinner';
             this.label.appendChild(spinner);
         }
+		if (this.inlineErrorText) {
+			const t = document.createElement('span');
+			t.className = 'pf-timeslider-loading-text';
+			t.textContent = ` ${this.inlineErrorText}`;
+			this.label.appendChild(t);
+		}
     }
 
     _setIndex(idx) {

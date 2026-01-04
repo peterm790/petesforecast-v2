@@ -34,6 +34,10 @@
   align-items: center;
 }
 
+.pf-timeslider-row.pf-no-edges {
+  grid-template-columns: auto 1fr auto; /* prev | slider | next */
+}
+
 .pf-timeslider-edge {
   color: rgba(255,255,255,0.8);
   font-size: clamp(11px, 1.1vw, 12px);

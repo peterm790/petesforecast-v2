@@ -420,7 +420,9 @@ function updateTimeSliderConstraint(state, leads) {
 }
 
 async function preloadAll(state) {
-    const myToken = ++preloadToken;
+	// Cancel any in-flight preloads to free bandwidth/resources
+	try { dataCache.abortAll(); } catch {}
+	const myToken = ++preloadToken;
     const leads = leadsForFrequency(state.frequency);
     // Ensure current lead is valid, but do not reset if already valid
     if (!leads.includes(currentLeadHours)) {
@@ -441,8 +443,21 @@ async function preloadAll(state) {
         initialLeads.reduce((accLeads, lead) => accLeads + (dataCache.get(variable, lead, initKey) ? 0 : 1), 0)
     ), 0);
 
+	// Pre-compute background missing for unified progress
+	const bgMissingPre = variablesAll.reduce((accVars, variable) => accVars + (
+		bgLeads.reduce((accLeads, lead) => accLeads + (dataCache.get(variable, lead, initKey) ? 0 : 1), 0)
+	), 0);
+	const totalToLoad = initialMissing + bgMissingPre;
+
     // Update slider constraint initially (likely 0 or cached amount)
     updateTimeSliderConstraint(state, leads);
+	// Clear any previous inline error and prime unified spinner
+	timeSlider.setInlineError('');
+	if (totalToLoad > 0) {
+		timeSlider.setBackgroundLoading(true, 0, totalToLoad);
+	} else {
+		timeSlider.setBackgroundLoading(false);
+	}
 
     if (initialMissing > 0 && myToken === preloadToken) {
         try {
@@ -451,16 +466,21 @@ async function preloadAll(state) {
                 initKey,
                 leads: initialLeads,
                 buildUrl: (variable, leadsChunk) => buildMultiUrl(variable, leadsChunk, initKey),
-                fetchData: (url) => fetchFrames(url),
-                onProgress: () => {
+				fetchData: (url) => fetchFrames(url),
+				onProgress: (doneFg /*, totalFg */) => {
                     if (myToken !== preloadToken) return;
                     // Keep slider constraint tight while the foreground frames arrive.
                     updateTimeSliderConstraint(state, leads);
+					// Unified progress: foreground completes first segment
+					const clampedDone = Math.min(doneFg, initialMissing);
+					timeSlider.setBackgroundLoading(true, clampedDone, totalToLoad || clampedDone);
                 },
-                chunkSize: LEAD_CHUNK_SIZE
+				chunkSize: LEAD_CHUNK_SIZE,
+				token: myToken
             });
         } catch (err) {
             console.error('Foreground preload failed:', err);
+			try { timeSlider.setInlineError('Initial load failed'); } catch {}
             throw err;
         }
     }
@@ -473,49 +493,38 @@ async function preloadAll(state) {
     renderFromCache(state, currentLeadHours);
 
     // --- Phase 2: Background Load (Non-blocking) ---
-    if (bgLeads.length > 0) {
-        // Calculate missing for background
-        const bgMissing = variablesAll.reduce((accVars, variable) => accVars + (
-            bgLeads.reduce((accLeads, lead) => accLeads + (dataCache.get(variable, lead, initKey) ? 0 : 1), 0)
-        ), 0);
-
-        if (bgMissing > 0) {
-            const totalBgFrames = bgLeads.length * varsCount;
-            const doneBgFrames = totalBgFrames - bgMissing;
-            
-            timeSlider.setBackgroundLoading(true, doneBgFrames, totalBgFrames);
-
-            // Fire and forget
-            dataCache.preload({
-                variables: variablesAll,
-                initKey,
-                leads: bgLeads,
-                buildUrl: (variable, leadsChunk) => buildMultiUrl(variable, leadsChunk, initKey),
-                fetchData: (url) => fetchFrames(url),
-                onProgress: () => {
-                    if (myToken !== preloadToken) return;
-                    const currentDone = countCachedFrames(variablesAll, initKey, bgLeads);
-                    timeSlider.setBackgroundLoading(true, currentDone, totalBgFrames);
-                    updateTimeSliderConstraint(state, leads);
-                },
-                chunkSize: LEAD_CHUNK_SIZE
-            }).then(() => {
-                if (myToken === preloadToken) {
-                    timeSlider.setBackgroundLoading(false);
-                    updateTimeSliderConstraint(state, leads);
-                }
-            }).catch(err => {
-                console.error('Background preload failed:', err);
-                if (myToken === preloadToken) {
-                    timeSlider.setBackgroundLoading(false);
-                }
-            });
-        } else {
-             timeSlider.setBackgroundLoading(false);
-        }
-    } else {
-        timeSlider.setBackgroundLoading(false);
-    }
+	if (bgLeads.length > 0 && bgMissingPre > 0) {
+		// Fire and forget with unified progress
+		dataCache.preload({
+			variables: variablesAll,
+			initKey,
+			leads: bgLeads,
+			buildUrl: (variable, leadsChunk) => buildMultiUrl(variable, leadsChunk, initKey),
+			fetchData: (url) => fetchFrames(url),
+			onProgress: (doneBg /*, totalBg */) => {
+				if (myToken !== preloadToken) return;
+				const fgDone = initialMissing;
+				const combinedDone = Math.min(fgDone + doneBg, totalToLoad);
+				timeSlider.setBackgroundLoading(true, combinedDone, totalToLoad || combinedDone);
+				updateTimeSliderConstraint(state, leads);
+			},
+			chunkSize: LEAD_CHUNK_SIZE,
+			token: myToken
+		}).then(() => {
+			if (myToken === preloadToken) {
+				timeSlider.setBackgroundLoading(false);
+				updateTimeSliderConstraint(state, leads);
+			}
+		}).catch(err => {
+			console.error('Background preload failed:', err);
+			if (myToken === preloadToken) {
+				try { timeSlider.setInlineError('Background load failed'); } catch {}
+				timeSlider.setBackgroundLoading(false);
+			}
+		});
+	} else {
+		timeSlider.setBackgroundLoading(false);
+	}
 }
 
 // Time slider UI
