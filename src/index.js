@@ -280,12 +280,18 @@ async function renderFromCache(state, leadHours) {
     const dataMax = typeof state.dataMax === 'number' ? state.dataMax : def.max;
     const initKey = getInitIndexFromState(state);
     let rasterData = dataCache.get(state.variable, leadHours, initKey);
-    const uwind = dataCache.get('wind_u_10m', leadHours, initKey);
-    const vwind = dataCache.get('wind_v_10m', leadHours, initKey);
+
+    // Select U/V pair for vectors and potential scalar derivation
+    const use100m = (state.variable === 'wind_speed_100m');
+    const uKey = use100m ? 'wind_u_100m' : 'wind_u_10m';
+    const vKey = use100m ? 'wind_v_100m' : 'wind_v_10m';
+    const uwind = dataCache.get(uKey, leadHours, initKey);
+    const vwind = dataCache.get(vKey, leadHours, initKey);
+
     // If wind speed is requested, compute from U and V instead of fetching from server
-    if (state.variable === 'wind_speed_10m' && uwind && vwind) {
-        const uDef = weatherVariables['wind_u_10m'];
-        const vDef = weatherVariables['wind_v_10m'];
+    if ((state.variable === 'wind_speed_10m' || state.variable === 'wind_speed_100m') && uwind && vwind) {
+        const uDef = weatherVariables[uKey];
+        const vDef = weatherVariables[vKey];
         const uPhysMin = typeof uDef.physMin === 'number' ? uDef.physMin : uDef.min;
         const uPhysMax = typeof uDef.physMax === 'number' ? uDef.physMax : uDef.max;
         const vPhysMin = typeof vDef.physMin === 'number' ? vDef.physMin : vDef.min;
@@ -346,7 +352,7 @@ async function renderFromCache(state, leadHours) {
 
     const layers = [raster];
     if (uwind && vwind && vectorWind) {
-        const windDef = weatherVariables['wind_u_10m'];
+        const windDef = weatherVariables[uKey];
         const windMin = typeof windDef.physMin === 'number' ? windDef.physMin : windDef.min;
         const windMax = typeof windDef.physMax === 'number' ? windDef.physMax : windDef.max;
         const particle = new ParticleLayer({
@@ -374,10 +380,10 @@ async function renderFromCache(state, leadHours) {
     lastUWind = uwind || null;
     lastVWind = vwind || null;
     if (uwind && vwind) {
-        const windDef = weatherVariables['wind_u_10m'];
+        const windDef = weatherVariables[uKey];
         lastUMin = typeof windDef.physMin === 'number' ? windDef.physMin : windDef.min;
         lastUMax = typeof windDef.physMax === 'number' ? windDef.physMax : windDef.max;
-        const windDefV = weatherVariables['wind_v_10m'];
+        const windDefV = weatherVariables[vKey];
         lastVMin = typeof windDefV.physMin === 'number' ? windDefV.physMin : windDefV.min;
         lastVMax = typeof windDefV.physMax === 'number' ? windDefV.physMax : windDefV.max;
     }
@@ -424,7 +430,9 @@ function updateTimeSliderConstraint(state, leads) {
     const initKey = getInitIndexFromState(state);
     const variablesAll = (state.variable === 'wind_speed_10m')
         ? ['wind_u_10m', 'wind_v_10m']
-        : [state.variable, 'wind_u_10m', 'wind_v_10m'];
+        : (state.variable === 'wind_speed_100m'
+            ? ['wind_u_100m', 'wind_v_100m', 'wind_u_10m', 'wind_v_10m']
+            : [state.variable, 'wind_u_10m', 'wind_v_10m']);
         
     let maxIndex = -1;
     for (let i = 0; i < leads.length; i++) {
@@ -464,7 +472,9 @@ async function preloadAll(state) {
     const initKey = getInitIndexFromState(state);
     const variablesAll = (state.variable === 'wind_speed_10m')
         ? ['wind_u_10m', 'wind_v_10m']
-        : [state.variable, 'wind_u_10m', 'wind_v_10m'];
+        : (state.variable === 'wind_speed_100m'
+            ? ['wind_u_100m', 'wind_v_100m', 'wind_u_10m', 'wind_v_10m']
+            : [state.variable, 'wind_u_10m', 'wind_v_10m']);
     const varsCount = variablesAll.length;
 
     // Split leads into foreground (<= 12h) and background (> 12h)
