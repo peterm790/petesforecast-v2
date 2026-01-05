@@ -4,6 +4,7 @@ export function createTooltipManager({ onClose } = {}) {
     let tooltipElement = null;
     let contentElement = null;
     let currentUnit = '';
+    let currentPrecision = 2;
 
     function ensureTooltip() {
         if (tooltipElement) return tooltipElement;
@@ -29,8 +30,15 @@ export function createTooltipManager({ onClose } = {}) {
         return tooltipElement;
     }
 
-    function updateUnit(unit) {
-        currentUnit = unit || '';
+    function updateUnit(unitOrConfig) {
+        if (unitOrConfig && typeof unitOrConfig === 'object') {
+            currentUnit = unitOrConfig.unit || '';
+            if (Number.isFinite(unitOrConfig.precision)) {
+                currentPrecision = Math.max(0, Math.floor(unitOrConfig.precision));
+            }
+        } else {
+            currentUnit = unitOrConfig || '';
+        }
     }
 
     function updateAtPixel(x, y, value, direction, extraLabel) {
@@ -47,8 +55,10 @@ export function createTooltipManager({ onClose } = {}) {
         el.style.left = `${x}px`;
         el.style.top = `${y}px`;
         
-        // Format value (assuming float, keep 1 decimal mostly)
-        const valStr = typeof value === 'number' ? value.toFixed(1) : value;
+        // Format value using configured precision
+        const valStr = (typeof value === 'number' && Number.isFinite(value))
+            ? String(Number(value.toFixed(Math.max(0, currentPrecision))))
+            : value;
         
         // Main row: Value + Unit + (optional) Direction
         let content = `<div class="pf-tooltip-value">

@@ -42,6 +42,31 @@ function convertAffineArrayFloat32(src, a, b) {
     return out;
 }
 
+// Precision helper mirrored from menubar for consistent UI formatting
+function getPrecisionForUnit(def, unit) {
+    if (!def) return 0;
+    if (def.precisions && Number.isFinite(def.precisions[unit])) {
+        const p = def.precisions[unit];
+        return Math.max(0, Math.floor(p));
+    }
+    try {
+        const { fromNative } = getUnitConv(def, unit || (def.defaultUnit || def.unit));
+        const physMinNative = typeof def.physMin === 'number' ? def.physMin : def.min;
+        const physMaxNative = typeof def.physMax === 'number' ? def.physMax : def.max;
+        const physMin = convertValue(fromNative.a, fromNative.b, Number(physMinNative));
+        const physMax = convertValue(fromNative.a, fromNative.b, Number(physMaxNative));
+        const countDecimals = (n) => {
+            if (typeof n !== 'number' || !Number.isFinite(n)) return 0;
+            const s = String(n);
+            const parts = s.split('.');
+            return parts.length > 1 ? parts[1].length : 0;
+        };
+        return Math.max(countDecimals(physMin), countDecimals(physMax), 0);
+    } catch {
+        return 0;
+    }
+}
+
 function toIsoZ(d) { return d.toISOString().replace('.000Z', 'Z'); }
 let INIT_ISOS_ASC = null;
 let latestISO = null;
@@ -145,7 +170,15 @@ const tooltipManager = createTooltipManager({
 
 function updateTooltipUnitFormat(unitString) {
     const unit = typeof unitString === 'string' ? unitString : '';
-    try { tooltipManager.updateUnit(unit); } catch {}
+    try {
+        const state = menu.getState();
+        const def = weatherVariables[state.variable];
+        const chosenUnit = unit || (def && (def.defaultUnit || def.unit)) || '';
+        const precision = getPrecisionForUnit(def, chosenUnit);
+        tooltipManager.updateUnit({ unit: chosenUnit, precision });
+    } catch {
+        try { tooltipManager.updateUnit(unit); } catch {}
+    }
 }
 
 async function fetchFrames(url, signal) {

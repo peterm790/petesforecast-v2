@@ -52,7 +52,8 @@
         "physMin": 0,
         "physMax": 1000,
         "cmapGenre": "gmt",
-        "cmapName": "GMT_wysiwyg"
+        "cmapName": "GMT_wysiwyg",
+        "precisions": { "W/m^2": 0 }
     },
     "downward_short_wave_radiation_flux_surface": {
         "commonName": "Downward shortwave radiation (surface)",
@@ -63,7 +64,8 @@
         "physMin": 0,
         "physMax": 1400,
         "cmapGenre": "gmt",
-        "cmapName": "GMT_cubhelix"
+        "cmapName": "GMT_cubhelix",
+        "precisions": { "W/m^2": 0 }
     },
     "geopotential_height_cloud_ceiling": {
         "commonName": "Cloud ceiling height (geopotential)",
@@ -74,7 +76,8 @@
         "physMin": 0,
         "physMax": 25000,
         "cmapGenre": "gmt",
-        "cmapName": "GMT_topo"
+        "cmapName": "GMT_topo",
+        "precisions": { "gpm": 0 }
     },
     "maximum_temperature_2m": {
         "commonName": "Max temperature (2 m)",
@@ -92,7 +95,8 @@
             "C": { "fromNative": { "a": 1, "b": 0 }, "toNative": { "a": 1, "b": 0 } },
             "K": { "fromNative": { "a": 1, "b": 273.15 }, "toNative": { "a": 1, "b": -273.15 } },
             "F": { "fromNative": { "a": 1.8, "b": 32 }, "toNative": { "a": 0.5555555555555556, "b": -17.77777777777778 } }
-        }
+        },
+        "precisions": { "C": 0, "K": 0, "F": 0 }
     },
     "minimum_temperature_2m": {
         "commonName": "Min temperature (2 m)",
@@ -110,7 +114,8 @@
             "C": { "fromNative": { "a": 1, "b": 0 }, "toNative": { "a": 1, "b": 0 } },
             "K": { "fromNative": { "a": 1, "b": 273.15 }, "toNative": { "a": 1, "b": -273.15 } },
             "F": { "fromNative": { "a": 1.8, "b": 32 }, "toNative": { "a": 0.5555555555555556, "b": -17.77777777777778 } }
-        }
+        },
+        "precisions": { "C": 0, "K": 0, "F": 0 }
     },
     "percent_frozen_precipitation_surface": {
         "commonName": "Frozen precipitation (%)",
@@ -121,7 +126,8 @@
         "physMin": -5,
         "physMax": 105,
         "cmapGenre": "ncl",
-        "cmapName": "prcp2_15lev"
+        "cmapName": "prcp2_15lev",
+        "precisions": { "%": 0 }
     },
     "precipitable_water_atmosphere": {
         "commonName": "Precipitable water",
@@ -131,8 +137,9 @@
         "max": 85,
         "physMin": 0,
         "physMax": 100,
-        "cmapGenre": "ncl",
-        "cmapName": "wgne15"
+        "cmapGenre": "cmocean",
+        "cmapName": "rain",
+        "precisions": { "kg/m^2": 0 }
     },
     "precipitation_surface": {
         "commonName": "Precipitation rate (surface)",
@@ -143,7 +150,19 @@
         "physMin": 0,
         "physMax": 0.003,
         "cmapGenre": "cmocean",
-        "cmapName": "rain"
+        "cmapName": "rain",
+        "defaultUnit": "mm/hour",
+        "units": ["mm/hour", "mm/day", "mm/s"],
+        "convert": {
+            "mm/s": { "fromNative": { "a": 1, "b": 0 }, "toNative": { "a": 1, "b": 0 } },
+            "mm/hour": { "fromNative": { "a": 3600, "b": 0 }, "toNative": { "a": 0.0002777777777777778, "b": 0 } },
+            "mm/day": { "fromNative": { "a": 86400, "b": 0 }, "toNative": { "a": 0.000011574074074074073, "b": 0 } }
+        },
+        "precisions": {
+            "mm/s": 3,
+            "mm/hour": 1,
+            "mm/day": 0
+        }
     },
     "pressure_reduced_to_mean_sea_level": {
         "commonName": "Mean sea level pressure",
@@ -160,7 +179,8 @@
         "convert": {
             "Pa": { "fromNative": { "a": 1, "b": 0 }, "toNative": { "a": 1, "b": 0 } },
             "kPa": { "fromNative": { "a": 0.001, "b": 0 }, "toNative": { "a": 1000, "b": 0 } }
-        }
+        },
+        "precisions": { "kPa": 0, "Pa": 0 }
     },
     "pressure_surface": {
         "commonName": "Surface pressure",
@@ -177,7 +197,8 @@
         "convert": {
             "Pa": { "fromNative": { "a": 1, "b": 0 }, "toNative": { "a": 1, "b": 0 } },
             "kPa": { "fromNative": { "a": 0.001, "b": 0 }, "toNative": { "a": 1000, "b": 0 } }
-        }
+        },
+        "precisions": { "kPa": 0, "Pa": 0 }
     },
     "relative_humidity_2m": {
         "commonName": "Relative humidity (2 m)",
@@ -188,7 +209,8 @@
         "physMin": -5,
         "physMax": 105,
         "cmapGenre": "cmocean",
-        "cmapName": "tarn"
+        "cmapName": "tarn",
+        "precisions": { "%": 0 }
     },
     "temperature_2m": {
         "commonName": "Temperature (2 m)",
@@ -206,7 +228,8 @@
             "C": { "fromNative": { "a": 1, "b": 0 }, "toNative": { "a": 1, "b": 0 } },
             "K": { "fromNative": { "a": 1, "b": 273.15 }, "toNative": { "a": 1, "b": -273.15 } },
             "F": { "fromNative": { "a": 1.8, "b": 32 }, "toNative": { "a": 0.5555555555555556, "b": -17.77777777777778 } }
-        }
+        },
+        "precisions": { "C": 0, "K": 0, "F": 0 }
     },
     "total_cloud_cover_atmosphere": {
         "commonName": "Total cloud cover",
@@ -217,7 +240,8 @@
         "physMin": -5,
         "physMax": 105,
         "cmapGenre": "gmt",
-        "cmapName": "GMT_bathy"
+        "cmapName": "GMT_bathy",
+        "precisions": { "%": 0 }
     },
     "wind_speed_10m": {
         "commonName": "Wind speed (10 m)",
@@ -236,7 +260,8 @@
             "kn": { "fromNative": { "a": 1.9438444924406048, "b": 0 }, "toNative": { "a": 0.514444, "b": 0 } },
             "km/h": { "fromNative": { "a": 3.6, "b": 0 }, "toNative": { "a": 0.2777777777777778, "b": 0 } },
             "mph": { "fromNative": { "a": 2.2369362920544025, "b": 0 }, "toNative": { "a": 0.44704, "b": 0 } }
-        }
+        },
+        "precisions": { "m/s": 1, "kn": 1, "km/h": 1, "mph": 1 }
     },
     "wind_speed_100m": {
         "commonName": "Wind speed (100 m)",
@@ -255,7 +280,8 @@
             "kn": { "fromNative": { "a": 1.9438444924406048, "b": 0 }, "toNative": { "a": 0.514444, "b": 0 } },
             "km/h": { "fromNative": { "a": 3.6, "b": 0 }, "toNative": { "a": 0.2777777777777778, "b": 0 } },
             "mph": { "fromNative": { "a": 2.2369362920544025, "b": 0 }, "toNative": { "a": 0.44704, "b": 0 } }
-        }
+        },
+        "precisions": { "m/s": 1, "kn": 1, "km/h": 1, "mph": 1 }
     },
     "wind_vector_10m": {
         "commonName": "Wind vector (10 m)",
@@ -290,7 +316,8 @@
         "physMin": -150,
         "physMax": 150,
         "cmapGenre": "cmocean",
-        "cmapName": "thermal"
+        "cmapName": "thermal",
+        "precisions": { "m/s": 1 }
     },
     "wind_u_10m": {
         "commonName": "U wind (10 m)",
@@ -301,7 +328,8 @@
         "physMin": -100,
         "physMax": 100,
         "cmapGenre": "cmocean",
-        "cmapName": "thermal"
+        "cmapName": "thermal",
+        "precisions": { "m/s": 1 }
     },
     "wind_v_100m": {
         "commonName": "V wind (100 m)",
@@ -312,7 +340,8 @@
         "physMin": -150,
         "physMax": 150,
         "cmapGenre": "cmocean",
-        "cmapName": "thermal"
+        "cmapName": "thermal",
+        "precisions": { "m/s": 1 }
     },
     "wind_v_10m": {
         "commonName": "V wind (10 m)",
@@ -323,6 +352,7 @@
         "physMin": -100,
         "physMax": 100,
         "cmapGenre": "cmocean",
-        "cmapName": "thermal"
+        "cmapName": "thermal",
+        "precisions": { "m/s": 1 }
     }
 }

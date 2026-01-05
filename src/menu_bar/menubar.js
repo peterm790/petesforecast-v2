@@ -2,6 +2,7 @@
 const CPT_FILES = import.meta.glob('/src/assets/cmaps/cpt-city/**/*.cpt', { query: '?raw', import: 'default' });
 import weatherVariables from '../assets/weather_variables.json';
 import { fetchInitTimeRange, generateInitTimes6h, formatLocal, formatUTC } from '../util.js';
+import { getNativeRange, setNativeRange } from '../data/range_store.js';
 
 function buildColormapIndex() {
     /** @type {Record<string, Set<string>>} */
@@ -151,6 +152,7 @@ export class MenuBar {
         close.setAttribute('aria-label', 'Close menu');
         close.textContent = '×';
         close.addEventListener('click', () => {
+            try { this._commitCurrentRangeAndPersistNative(); } catch {}
             this.wrap.classList.add('hidden');
             toggle.style.display = '';
             if (this.onToggle) this.onToggle(false);
@@ -168,6 +170,18 @@ export class MenuBar {
         this._applyVariableColormapDefaults();
         this._ensureValidColormapState();
         this._applyVariableUnitDefault();
+        // Apply any persisted native range override (per variable) before deriving defaults
+        try {
+            const variable = this.state.variable;
+            const def = weatherVariables[variable];
+            const unitForUI = this.state.unit || (def && (def.defaultUnit || def.unit));
+            const native = getNativeRange(variable);
+            if (native && def) {
+                const { fromNative } = this._getUnitConv(def, unitForUI);
+                this.state.dataMin = fromNative.a * native.min + fromNative.b;
+                this.state.dataMax = fromNative.a * native.max + fromNative.b;
+            }
+        } catch {}
         this._ensureValidDataRange();
         this._populateGenreSelect();
         this._populateColormapSelect();
@@ -206,6 +220,7 @@ export class MenuBar {
 
     _handleEsc(e) {
         if (e.key === 'Escape' && this.wrap && !this.wrap.classList.contains('hidden')) {
+            try { this._commitCurrentRangeAndPersistNative(); } catch {}
             this.wrap.classList.add('hidden');
             const openBtn = this.root.querySelector('.pf-menubar-open');
             if (openBtn) openBtn.style.display = '';
@@ -227,6 +242,8 @@ export class MenuBar {
 
             // If menu is open, close it
             if (!this.wrap.classList.contains('hidden')) {
+                // Commit any pending range edits before closing
+                try { this._commitCurrentRangeAndPersistNative(); } catch {}
                 this.wrap.classList.add('hidden');
                 const openBtn = this.root.querySelector('.pf-menubar-open');
                 if (openBtn) openBtn.style.display = '';
@@ -391,13 +408,36 @@ export class MenuBar {
         select.className = 'pf-menubar-select';
         this.variableSelect = select;
         select.addEventListener('change', () => {
+            // Before switching variable, persist current variable's range in native units
+            try {
+                const prevVar = this.state.variable;
+                const prevDef = weatherVariables[prevVar];
+                const prevUnit = this.state.unit || (prevDef && (prevDef.defaultUnit || prevDef.unit));
+                if (prevDef && Number.isFinite(this.state.dataMin) && Number.isFinite(this.state.dataMax)) {
+                    const { toNative } = this._getUnitConv(prevDef, prevUnit);
+                    const nativeMin = toNative.a * Number(this.state.dataMin) + toNative.b;
+                    const nativeMax = toNative.a * Number(this.state.dataMax) + toNative.b;
+                    setNativeRange(prevVar, nativeMin, nativeMax);
+                }
+            } catch {}
             const v = select.value;
             const def = weatherVariables[v] || {};
             const newGenre = def.cmapGenre || this.state.colormapGenre;
             const newMap = def.cmapName || this.state.colormap;
             // Reset unit to variable default on variable change
             const nextUnit = (def && (def.defaultUnit || def.unit)) || this.state.unit || '';
-            this.setState({ variable: v, unit: nextUnit, dataMin: undefined, dataMax: undefined, colormapGenre: newGenre, colormap: newMap });
+            // Load persisted native range (if any) and convert to nextUnit
+            let nextDataMin = undefined;
+            let nextDataMax = undefined;
+            try {
+                const native = getNativeRange(v);
+                if (native && def) {
+                    const { fromNative } = this._getUnitConv(def, nextUnit);
+                    nextDataMin = fromNative.a * native.min + fromNative.b;
+                    nextDataMax = fromNative.a * native.max + fromNative.b;
+                }
+            } catch {}
+            this.setState({ variable: v, unit: nextUnit, dataMin: nextDataMin, dataMax: nextDataMax, colormapGenre: newGenre, colormap: newMap });
             this._ensureValidColormapState();
             this._populateGenreSelect();
             this._populateColormapSelect();
@@ -418,15 +458,16 @@ export class MenuBar {
             const def = weatherVariables[this.state.variable];
             const prevUnit = this.state.unit || (def && (def.defaultUnit || def.unit));
             const newUnit = select.value;
-            // Convert current dataMin/Max from prevUnit -> native -> newUnit
+            // Convert current unit range -> native and persist, then convert native -> newUnit
             const { toNative: prevToNative } = this._getUnitConv(def, prevUnit);
             const { fromNative: nextFromNative } = this._getUnitConv(def, newUnit);
-            const toNative = (x) => prevToNative.a * x + prevToNative.b;
-            const fromNative = (x) => nextFromNative.a * x + nextFromNative.b;
-            const nativeMin = toNative(typeof this.state.dataMin === 'number' ? this.state.dataMin : def.min);
-            const nativeMax = toNative(typeof this.state.dataMax === 'number' ? this.state.dataMax : def.max);
-            const newMin = fromNative(nativeMin);
-            const newMax = fromNative(nativeMax);
+            const currentMin = Number.isFinite(this.state.dataMin) ? Number(this.state.dataMin) : (def ? def.min : 0);
+            const currentMax = Number.isFinite(this.state.dataMax) ? Number(this.state.dataMax) : (def ? def.max : 1);
+            const nativeMin = prevToNative.a * currentMin + prevToNative.b;
+            const nativeMax = prevToNative.a * currentMax + prevToNative.b;
+            try { setNativeRange(this.state.variable, nativeMin, nativeMax); } catch {}
+            const newMin = nextFromNative.a * nativeMin + nextFromNative.b;
+            const newMax = nextFromNative.a * nativeMax + nextFromNative.b;
             this.setState({ unit: newUnit, dataMin: newMin, dataMax: newMax });
             this._ensureValidDataRange();
             this._populateRangeSliders();
@@ -493,50 +534,78 @@ export class MenuBar {
             title.textContent = this._rangeTitleText();
         };
 
+        const commitRangeInputs = () => {
+            if (!this.minSlider || !this.maxSlider) return;
+            const def = weatherVariables[this.state.variable];
+            const unitForUI = this.state.unit || (def && (def.defaultUnit || def.unit));
+            const precision = this._getPrecisionForUnit(def, unitForUI);
+            const minBound = Number(this.minSlider.min);
+            const maxBound = Number(this.maxSlider.max);
+            let minVal = Number(this.minSlider.value);
+            let maxVal = Number(this.maxSlider.value);
+            if (!Number.isFinite(minVal) || !Number.isFinite(maxVal)) return;
+            // Clamp within bounds and mutual ordering
+            minVal = Math.max(minBound, Math.min(minVal, maxBound));
+            maxVal = Math.min(maxBound, Math.max(maxVal, minVal));
+            // Apply formatting
+            this.minSlider.value = this._formatWithPrecision(minVal, precision);
+            this.maxSlider.value = this._formatWithPrecision(maxVal, precision);
+            this.setState({ dataMin: Number(this.minSlider.value), dataMax: Number(this.maxSlider.value) });
+            // Persist in native units
+            try {
+                const { toNative } = this._getUnitConv(def, unitForUI);
+                const nativeMin = toNative.a * Number(this.minSlider.value) + toNative.b;
+                const nativeMax = toNative.a * Number(this.maxSlider.value) + toNative.b;
+                setNativeRange(this.state.variable, nativeMin, nativeMax);
+            } catch {}
+        };
+
         minInput.addEventListener('input', () => {
             const minVal = Number(minInput.value);
             const maxVal = Number(this.maxSlider.value);
             if (Number.isFinite(minVal) && Number.isFinite(maxVal)) {
-                const rmin = Math.round(minVal);
-                const rmax = Math.round(maxVal);
-                if (rmin > rmax) this.maxSlider.value = String(rmin);
-                this.setState({ dataMin: Math.round(Number(this.minSlider.value)), dataMax: Math.round(Number(this.maxSlider.value)) });
+                if (minVal > maxVal) this.maxSlider.value = String(minVal);
+                this.setState({ dataMin: Number(this.minSlider.value), dataMax: Number(this.maxSlider.value) });
                 updateTitle();
             }
+        });
+        minInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                commitRangeInputs();
+                updateTitle();
+            }
+        });
+        minInput.addEventListener('blur', () => {
+            commitRangeInputs();
+            updateTitle();
         });
         maxInput.addEventListener('input', () => {
             const minVal = Number(this.minSlider.value);
             const maxVal = Number(maxInput.value);
             if (Number.isFinite(minVal) && Number.isFinite(maxVal)) {
-                const rmin = Math.round(minVal);
-                const rmax = Math.round(maxVal);
-                if (rmax < rmin) this.minSlider.value = String(rmax);
-                this.setState({ dataMin: Math.round(Number(this.minSlider.value)), dataMax: Math.round(Number(this.maxSlider.value)) });
+                if (maxVal < minVal) this.minSlider.value = String(maxVal);
+                this.setState({ dataMin: Number(this.minSlider.value), dataMax: Number(this.maxSlider.value) });
                 updateTitle();
             }
         });
-        const roundInt = (n) => Number.isFinite(n) ? Math.round(n) : n;
-        const formatInt = (n) => (Number.isFinite(n) ? String(Math.round(n)) : String(n));
+        maxInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                commitRangeInputs();
+                updateTitle();
+            }
+        });
+        maxInput.addEventListener('blur', () => {
+            commitRangeInputs();
+            updateTitle();
+        });
         minInput.addEventListener('change', () => {
-            const minBound = Number(this.minSlider.min);
-            const maxBound = Number(this.maxSlider.max);
-            let minVal = Number(this.minSlider.value);
-            if (!Number.isFinite(minVal)) return;
-            minVal = Math.max(minBound, Math.min(minVal, Number(this.maxSlider.value)));
-            const r = roundInt(minVal);
-            this.minSlider.value = formatInt(r);
-            this.setState({ dataMin: r, dataMax: roundInt(Number(this.maxSlider.value)) });
+            commitRangeInputs();
             updateTitle();
         });
         maxInput.addEventListener('change', () => {
-            const minBound = Number(this.minSlider.min);
-            const maxBound = Number(this.maxSlider.max);
-            let maxVal = Number(this.maxSlider.value);
-            if (!Number.isFinite(maxVal)) return;
-            maxVal = Math.min(maxBound, Math.max(maxVal, Number(this.minSlider.value)));
-            const r = roundInt(maxVal);
-            this.maxSlider.value = formatInt(r);
-            this.setState({ dataMin: roundInt(Number(this.minSlider.value)), dataMax: r });
+            commitRangeInputs();
             updateTitle();
         });
         row.appendChild(minInput);
@@ -547,6 +616,8 @@ export class MenuBar {
         close.setAttribute('aria-label', 'Close menu');
         close.textContent = '×';
         close.addEventListener('click', () => {
+            // Commit current inputs before hiding
+            try { commitRangeInputs(); } catch {}
             this.wrap.classList.add('hidden');
             const openBtn = this.root.querySelector('.pf-menubar-open');
             if (openBtn) openBtn.style.display = '';
@@ -589,18 +660,22 @@ export class MenuBar {
         const def = weatherVariables[this.state.variable];
         if (!def) return;
         // Convert native min/max to selected unit for UI sliders
-        const { fromNative } = this._getUnitConv(def, this.state.unit || def.unit);
-        const min = Number(fromNative.a * Number(def.min) + fromNative.b);
-        const max = Number(fromNative.a * Number(def.max) + fromNative.b);
-        const step = 1;
+        const unitForUI = this.state.unit || (def.defaultUnit || def.unit);
+        const { fromNative } = this._getUnitConv(def, unitForUI);
+        const physMinNative = typeof def.physMin === 'number' ? def.physMin : def.min;
+        const physMaxNative = typeof def.physMax === 'number' ? def.physMax : def.max;
+        const min = Number(fromNative.a * Number(physMinNative) + fromNative.b);
+        const max = Number(fromNative.a * Number(physMaxNative) + fromNative.b);
+        const precision = this._getPrecisionForUnit(def, unitForUI);
+        const step = precision > 0 ? Math.pow(10, -precision) : 1;
         this.minSlider.min = String(min);
         this.minSlider.max = String(max);
         this.minSlider.step = String(step);
         this.maxSlider.min = String(min);
         this.maxSlider.max = String(max);
         this.maxSlider.step = String(step);
-        this.minSlider.value = String(Math.round(Number(this.state.dataMin)));
-        this.maxSlider.value = String(Math.round(Number(this.state.dataMax)));
+        this.minSlider.value = this._formatWithPrecision(Number(this.state.dataMin), precision);
+        this.maxSlider.value = this._formatWithPrecision(Number(this.state.dataMax), precision);
         if (this.rangeTitle) this.rangeTitle.textContent = this._rangeTitleText();
         // redraw highlight after bounds/value change
         const evt = new Event('input');
@@ -682,12 +757,19 @@ export class MenuBar {
     _ensureValidDataRange() {
         const def = weatherVariables[this.state.variable];
         const { fromNative } = def ? this._getUnitConv(def, this.state.unit || (def.defaultUnit || def.unit)) : { fromNative: { a: 1, b: 0 } };
-        const min = def ? (fromNative.a * def.min + fromNative.b) : 0;
-        const max = def ? (fromNative.a * def.max + fromNative.b) : 1;
-        if (typeof this.state.dataMin !== 'number') this.state.dataMin = min;
-        if (typeof this.state.dataMax !== 'number') this.state.dataMax = max;
-        if (this.state.dataMin < min) this.state.dataMin = min;
-        if (this.state.dataMax > max) this.state.dataMax = max;
+        // Bounds are physical range; defaults are dataset nominal min/max
+        const physMinNative = def ? (typeof def.physMin === 'number' ? def.physMin : def.min) : 0;
+        const physMaxNative = def ? (typeof def.physMax === 'number' ? def.physMax : def.max) : 1;
+        const boundsMin = def ? (fromNative.a * physMinNative + fromNative.b) : 0;
+        const boundsMax = def ? (fromNative.a * physMaxNative + fromNative.b) : 1;
+        const defaultMin = def ? (fromNative.a * def.min + fromNative.b) : boundsMin;
+        const defaultMax = def ? (fromNative.a * def.max + fromNative.b) : boundsMax;
+        // If not set, fall back to defaults only; no recompute if already set
+        if (typeof this.state.dataMin !== 'number') this.state.dataMin = defaultMin;
+        if (typeof this.state.dataMax !== 'number') this.state.dataMax = defaultMax;
+        // Clamp to physical bounds
+        if (this.state.dataMin < boundsMin) this.state.dataMin = boundsMin;
+        if (this.state.dataMax > boundsMax) this.state.dataMax = boundsMax;
         if (this.state.dataMin > this.state.dataMax) this.state.dataMin = this.state.dataMax;
     }
 
@@ -736,9 +818,68 @@ export class MenuBar {
         return { fromNative, toNative };
     }
 
+    _getPrecisionForUnit(def, unit) {
+        if (!def) return 0;
+        if (def.precisions && Number.isFinite(def.precisions[unit])) {
+            const p = def.precisions[unit];
+            return Math.max(0, Math.floor(p));
+        }
+        // Fallback: derive precision from physMin/physMax expressed in the requested unit
+        try {
+            const { fromNative } = this._getUnitConv(def, unit || (def.defaultUnit || def.unit));
+            const physMinNative = typeof def.physMin === 'number' ? def.physMin : def.min;
+            const physMaxNative = typeof def.physMax === 'number' ? def.physMax : def.max;
+            const physMin = Number(fromNative.a * Number(physMinNative) + fromNative.b);
+            const physMax = Number(fromNative.a * Number(physMaxNative) + fromNative.b);
+            const countDecimals = (n) => {
+                if (typeof n !== 'number' || !Number.isFinite(n)) return 0;
+                const s = String(n);
+                const parts = s.split('.');
+                return parts.length > 1 ? parts[1].length : 0;
+            };
+            return Math.max(countDecimals(physMin), countDecimals(physMax), 0);
+        } catch {
+            return 0;
+        }
+    }
+
+    _formatWithPrecision(value, precision) {
+        if (typeof value !== 'number' || !Number.isFinite(value)) return String(value);
+        if (!Number.isFinite(precision) || precision <= 0) return String(value);
+        return String(Number(value.toFixed(precision)));
+    }
+
     _formatNumber(value) {
         if (typeof value !== 'number' || !Number.isFinite(value)) return String(value);
         return String(Number(value.toFixed(2)));
+    }
+
+    // Commit current range values (if present) and persist them in native units
+    _commitCurrentRangeAndPersistNative() {
+        if (!this.minSlider || !this.maxSlider) return;
+        const def = weatherVariables[this.state.variable];
+        if (!def) return;
+        const unitForUI = this.state.unit || (def && (def.defaultUnit || def.unit));
+        const precision = this._getPrecisionForUnit(def, unitForUI);
+        const minBound = Number(this.minSlider.min);
+        const maxBound = Number(this.maxSlider.max);
+        let minVal = Number(this.minSlider.value);
+        let maxVal = Number(this.maxSlider.value);
+        if (!Number.isFinite(minVal) || !Number.isFinite(maxVal)) return;
+        // Clamp within bounds and mutual ordering
+        minVal = Math.max(minBound, Math.min(minVal, maxBound));
+        maxVal = Math.min(maxBound, Math.max(maxVal, minVal));
+        // Apply formatting to inputs
+        this.minSlider.value = this._formatWithPrecision(minVal, precision);
+        this.maxSlider.value = this._formatWithPrecision(maxVal, precision);
+        const newMin = Number(this.minSlider.value);
+        const newMax = Number(this.maxSlider.value);
+        this.setState({ dataMin: newMin, dataMax: newMax });
+        // Persist in native units
+        const { toNative } = this._getUnitConv(def, unitForUI);
+        const nativeMin = toNative.a * newMin + toNative.b;
+        const nativeMax = toNative.a * newMax + toNative.b;
+        setNativeRange(this.state.variable, nativeMin, nativeMax);
     }
 
     _createAdvancedSection() {
