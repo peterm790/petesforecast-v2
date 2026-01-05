@@ -1,11 +1,11 @@
 .pf-loading-overlay {
-  position: fixed;
+  position: absolute;
   inset: 0;
   display: none;
   align-items: center;
   justify-content: center;
   background: rgba(0, 0, 0, 0.45);
-  z-index: 1000; /* Lower than auth overlay (2000) but higher than map */
+  z-index: 1500; /* Below auth overlay (2000), above menubars and controls */
   pointer-events: all; /* capture clicks to block UI */
 }
 .pf-loading-overlay * { pointer-events: none; }

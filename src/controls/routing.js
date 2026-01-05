@@ -437,8 +437,8 @@ export class RoutingControl {
         
         this.container = container;
         
-        // Mount loading overlay to the sidebar to cover the controls
-        this.loadingOverlay.mount(sidebar);
+        // Mount loading overlay on the wrap (not the scrollable/filtered sidebar) to avoid clipping
+        this.loadingOverlay.mount(wrap);
         
         // Initially show open button and hide menu, or vice versa?
         // User requested: "routing menu be close by default"
