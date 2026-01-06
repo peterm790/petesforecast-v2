@@ -1,12 +1,13 @@
 import mapboxgl from 'mapbox-gl';
 import { LoadingOverlay } from '../loading_overlay/loading.js';
-import { formatLocal, formatUTC } from '../util.js';
+import { formatLocal, formatUTC, parseInitTimeToDate } from '../util.js';
 import './routing.css';
 
 export class RoutingControl {
     constructor(map) {
         this.map = map;
         this.loadingOverlay = new LoadingOverlay();
+        this.initTimeMs = null; // Stores current init time in ms for time-step mapping
         // Defaults used when in "custom" mode (and as initial values).
         this._ADV_DEFAULTS = Object.freeze({
             crank_step: 30,
@@ -120,6 +121,7 @@ export class RoutingControl {
         this.isochronePointsByStep = new Map(); // Group isochrone points by step
         this.isochroneFeaturesByStep = new Map(); // Cache computed isochrone line features per step (performance)
         this.eventSource = null; // SSE stream for routing progress/results
+        this._hasReceivedResult = false; // Track if final result has been received for early-termination handling
 
         // Ensure the default routing mode applies its preset values immediately.
         this._applyRoutingModeLock();
@@ -1003,9 +1005,15 @@ export class RoutingControl {
             return;
         }
 
+        // Persist init time for mapping ISO → step index when highlighting
+        this.initTimeMs = null;
         let initTimeMs = 0;
-        if (initIsoTime) {
-            initTimeMs = new Date(initIsoTime).getTime();
+        if (initIsoTime && typeof initIsoTime === 'string' && initIsoTime !== '00Z') {
+            // Parse strictly like the TimeSlider does (raise if invalid)
+            const cleaned = initIsoTime.endsWith('Z') ? initIsoTime.slice(0, -1) : initIsoTime;
+            const d = parseInitTimeToDate(cleaned);
+            this.initTimeMs = d.getTime();
+            initTimeMs = this.initTimeMs;
         }
 
         leads.forEach((lead, index) => {
@@ -1039,6 +1047,49 @@ export class RoutingControl {
         if (!leads.includes(this.state.leadTimeStart)) {
             this.state.leadTimeStart = leads[0];
             this.timeSelect.value = String(leads[0]);
+        }
+    }
+    
+    // Apply highlight styling to the isochrone layer(s) for a given step index
+    _highlightIsochroneStep(currentStep) {
+        if (!Number.isInteger(currentStep) || currentStep < 0) return;
+        
+        // Build paint expressions that highlight only when feature.properties.step === currentStep
+        const colorExpr = [
+            'case',
+            ['==', ['get', 'step'], currentStep],
+            '#ff0000', // Highlight color (Red)
+            [
+                'hsl',
+                ['*', ['/', ['get', 'step'], 150], 360],
+                0.9,
+                0.5
+            ]
+        ];
+        
+        if (this.map.getLayer('pf-isochrone-dots')) {
+            this.map.setPaintProperty('pf-isochrone-dots', 'circle-color', colorExpr);
+            this.map.setPaintProperty('pf-isochrone-dots', 'circle-radius', [
+                'case',
+                ['==', ['get', 'step'], currentStep],
+                4,
+                2.5
+            ]);
+            this.map.setPaintProperty('pf-isochrone-dots', 'circle-opacity', [
+                'case',
+                ['==', ['get', 'step'], currentStep],
+                1.0,
+                0.85
+            ]);
+        }
+        if (this.map.getLayer('pf-isochrone-lines')) {
+            this.map.setPaintProperty('pf-isochrone-lines', 'line-color', colorExpr);
+            this.map.setPaintProperty('pf-isochrone-lines', 'line-width', [
+                'case',
+                ['==', ['get', 'step'], currentStep],
+                4,
+                2
+            ]);
         }
     }
 
@@ -1939,6 +1990,7 @@ export class RoutingControl {
         }
 
         this._hasReceivedInitial = false;
+        this._hasReceivedResult = false;
 
         // SSE (EventSource) stream. Server emits `data: <json>\n\n` frames.
         try {
@@ -1956,7 +2008,8 @@ export class RoutingControl {
                     }
 
                     // Final result: close stream + hide overlay
-                    if (msg && msg.type === 'result') {
+                    if (msg && msg.type === 'result' && msg.preliminary === false) {
+                        this._hasReceivedResult = true;
                         this._closeRouteStream();
                         this.loadingOverlay.hide();
                         const btn = this.loadingOverlay.root.querySelector('.pf-loading-cancel');
@@ -1976,7 +2029,12 @@ export class RoutingControl {
                 const btn = this.loadingOverlay.root.querySelector('.pf-loading-cancel');
                 if (btn) btn.remove();
                 if (!wasCancelled) {
-                    alert("Routing failed: SSE stream error");
+                    // Distinguish likely non-convergence (stream ended without a result after optimisation started)
+                    if (this._hasReceivedInitial && !this._hasReceivedResult) {
+                        alert("Routing failed: optimisation did not converge");
+                    } else {
+                        alert("Routing failed: SSE stream error");
+                    }
                 }
             };
         } catch (err) {
@@ -1992,16 +2050,22 @@ export class RoutingControl {
     _handleRouteMessage(msg) {
         if (msg.type === 'progress') {
             // Format: "Step: 5 | Dist: 120.5 nm" -> "Step 5 - 120 nm to go"
+            const passIdx = (msg.pass_idx === null || msg.pass_idx === undefined) ? null : Number(msg.pass_idx);
             const step = msg.step !== undefined ? `Step ${msg.step}` : '';
             const dist = msg.dist !== undefined ? `${Math.round(parseFloat(msg.dist))} nm to go` : '';
             const sep = (step && dist) ? ' - ' : '';
-            const prefix = this._hasReceivedInitial ? "Optimising..." : "Calculating...";
+            // Route phase: pass_idx is null; Optimise phase: pass_idx is 0+
+            const prefix = (passIdx === null)
+                ? "Calculating..."
+                : `Optimising (pass ${passIdx + 1})...`;
             const text = `${prefix} ${step}${sep}${dist}`;
             this.loadingOverlay.progressEl.textContent = text;
 
             // Draw isochrone points if available
             if (msg.isochrones && Array.isArray(msg.isochrones)) {
-                this._drawIsochrones(msg.isochrones, msg.step);
+                // Accumulate isochrones within a pass; clear only at end-of-pass (preliminary result).
+                const replace = false;
+                this._drawIsochrones(msg.isochrones, msg.step, passIdx, replace);
             }
         } else if (msg.type === 'initial') {
             this._hasReceivedInitial = true;
@@ -2017,15 +2081,35 @@ export class RoutingControl {
 
             this._drawRoute(msg.data, true); // true = isInitial
         } else if (msg.type === 'result') {
-            // Final optimisation complete.
-            // We keep the optimisation isochrones (dots) so the user can inspect them with the time slider.
-            // (Previously we cleared them here)
-            
-            this._drawRoute(msg.data, false); // false = final result
+            // During optimisation, server can emit preliminary route snapshots.
+            // preliminary === true → live preview (do not finalise UI or persist route)
+            // preliminary === false → final result (finalise and persist)
+            const isPrelim = (msg.preliminary === true);
+            if (isPrelim) {
+                // Live preview: update route line, keep UI state, do not persist routeData
+                this._drawRoute(msg.data, false, { preview: true });
+                // End of pass: clear all isochrones so the next pass starts fresh.
+                this.isochronePointsByStep.clear();
+                this.isochroneFeaturesByStep.clear();
+                const isoLineSource = this.map.getSource('pf-isochrone-lines-source');
+                if (isoLineSource) isoLineSource.setData({ type: 'FeatureCollection', features: [] });
+                const isoPointSource = this.map.getSource('pf-isochrone-points-source');
+                if (isoPointSource) isoPointSource.setData({ type: 'FeatureCollection', features: [] });
+            } else {
+                // Final optimisation complete: clear isochrones so only the final route remains.
+                this.isochronePointsByStep.clear();
+                this.isochroneFeaturesByStep.clear();
+                const isoLineSource = this.map.getSource('pf-isochrone-lines-source');
+                if (isoLineSource) isoLineSource.setData({ type: 'FeatureCollection', features: [] });
+                const isoPointSource = this.map.getSource('pf-isochrone-points-source');
+                if (isoPointSource) isoPointSource.setData({ type: 'FeatureCollection', features: [] });
+
+                this._drawRoute(msg.data, false, { preview: false }); // final result
+            }
         }
     }
 
-    _drawRoute(data, isInitial = false) {
+    _drawRoute(data, isInitial = false, options = {}) {
         // Process and draw route
         // Data can be [[lat, lon], ...] (initial) or [{lat, lon, ...}, ...] (result)
         
@@ -2038,8 +2122,12 @@ export class RoutingControl {
 
         if (pointsArray.length > 0) {
             
+            const isPreview = !!options.preview;
             if (!isInitial) {
-                this.routeData = pointsArray; // Store FINAL route for time slider sync
+                // Only persist route for time slider when this is the final route (not preview)
+                if (!isPreview) {
+                    this.routeData = pointsArray; // Store FINAL route for time slider sync
+                }
             }
             
             // Extract coordinates: [lon, lat]
@@ -2083,8 +2171,8 @@ export class RoutingControl {
                 });
             }
             
-            // Only switch view and notify app if it's the final route
-            if (!isInitial) {
+            // Only switch view and notify app if it's the final route (not preview)
+            if (!isInitial && !isPreview) {
                 // Switch to result view
                 this.formView.style.display = 'none';
                 this.resultView.style.display = 'flex';
@@ -2098,6 +2186,12 @@ export class RoutingControl {
                 // Notify app to jump time slider to start
                 if (this.onRouteLoadedHandler) {
                     this.onRouteLoadedHandler(this.state.leadTimeStart);
+                }
+            } else if (!isInitial && isPreview) {
+                // For previews, hide the initial route so the displayed route is the latest optimised one
+                const initialSource = this.map.getSource('pf-initial-route-source');
+                if (initialSource) {
+                    initialSource.setData({ type: 'FeatureCollection', features: [] });
                 }
             }
         } else {
@@ -2148,7 +2242,7 @@ export class RoutingControl {
         return ordered;
     }
 
-    _drawIsochrones(isochronePoints, step) {
+    _drawIsochrones(isochronePoints, step, passIdx = null, replace = false) {
         // During initial route calculation (pre-`initial`), render isochrones as lines.
         // During optimisation (post-`initial`), render isochrones as points (dots).
         // isochronePoints should be an array of [lat, lon] arrays
@@ -2159,9 +2253,25 @@ export class RoutingControl {
 
         const mode = this._hasReceivedInitial ? 'points' : 'lines';
 
-        // Group points by step
-        if (!this.isochronePointsByStep.has(step)) {
-            this.isochronePointsByStep.set(step, []);
+        // When replacing (optimise phase), clear all previously stored/painted isochrones.
+        if (replace) {
+            if (this.isochronePointsByStep && typeof this.isochronePointsByStep.clear === 'function') {
+                this.isochronePointsByStep.clear();
+            }
+            if (this.isochroneFeaturesByStep && typeof this.isochroneFeaturesByStep.clear === 'function') {
+                this.isochroneFeaturesByStep.clear();
+            }
+            const isoLineSourceReset = this.map.getSource('pf-isochrone-lines-source');
+            if (isoLineSourceReset) isoLineSourceReset.setData({ type: 'FeatureCollection', features: [] });
+            const isoPointSourceReset = this.map.getSource('pf-isochrone-points-source');
+            if (isoPointSourceReset) isoPointSourceReset.setData({ type: 'FeatureCollection', features: [] });
+        }
+
+        // Group points by (pass, step) to avoid mixing steps across optimisation passes.
+        // For route phase (passIdx === null), key under 'route'.
+        const groupKey = (passIdx === null) ? `route:${step}` : `opt${passIdx}:${step}`;
+        if (!this.isochronePointsByStep.has(groupKey)) {
+            this.isochronePointsByStep.set(groupKey, []);
         }
 
         // Add new points to the step group
@@ -2169,7 +2279,7 @@ export class RoutingControl {
             lat: point[0],
             lon: point[1]
         }));
-        this.isochronePointsByStep.get(step).push(...pointsWithCoords);
+        this.isochronePointsByStep.get(groupKey).push(...pointsWithCoords);
 
         const buildPointFeaturesForStep = (stepNum, points) => {
             if (!points || points.length === 0) return [];
@@ -2247,9 +2357,10 @@ export class RoutingControl {
         };
 
         // Recompute only the updated step; reuse cached features for other steps.
-        const stepPoints = this.isochronePointsByStep.get(step);
+        const stepPoints = this.isochronePointsByStep.get(groupKey);
         this.isochroneFeaturesByStep.set(
-            step,
+
+            groupKey,
             mode === 'points'
                 ? buildPointFeaturesForStep(step, stepPoints)
                 : buildLineFeaturesForStep(step, stepPoints)
@@ -2351,7 +2462,19 @@ export class RoutingControl {
 
     // Called when the main time slider changes
     setCurrentTime(isoTime) {
-        if (!this.routeData || !this.routeData.length) return;
+        // If we don't yet have a final route (routeData), still try to highlight
+        // the isochrone for the viewed hour using initTime + leadTimeStart.
+        if (!this.routeData || !this.routeData.length) {
+            if (this.initTimeMs !== null && typeof this.state?.leadTimeStart === 'number') {
+                const targetTimeMs = new Date(isoTime).getTime();
+                if (Number.isFinite(targetTimeMs)) {
+                    const leadHours = Math.round((targetTimeMs - this.initTimeMs) / (3600 * 1000));
+                    const currentStep = leadHours - this.state.leadTimeStart;
+                    this._highlightIsochroneStep(currentStep);
+                }
+            }
+            return;
+        }
 
         // Find point with closest timestamp
         const targetTime = new Date(isoTime).getTime();
@@ -2378,46 +2501,7 @@ export class RoutingControl {
             // Highlight isochrones/dots for the current step
             const currentStep = this.routeData.indexOf(closestPoint);
             if (currentStep >= 0) {
-                // Determine the paint property for highlighting
-                const colorExpr = [
-                    'case',
-                    ['==', ['get', 'step'], currentStep],
-                    '#ff0000', // Highlight color (Red)
-                    [
-                        'hsl',
-                        ['*', ['/', ['get', 'step'], 150], 360],
-                        0.9,
-                        0.5
-                    ]
-                ];
-
-                if (this.map.getLayer('pf-isochrone-dots')) {
-                    this.map.setPaintProperty('pf-isochrone-dots', 'circle-color', colorExpr);
-                    // Also make highlighted dots slightly larger and on top if possible?
-                    // We can bump radius for highlighted ones
-                    this.map.setPaintProperty('pf-isochrone-dots', 'circle-radius', [
-                        'case',
-                        ['==', ['get', 'step'], currentStep],
-                        4,   // Larger radius for current step
-                        2.5  // Default radius
-                    ]);
-                    this.map.setPaintProperty('pf-isochrone-dots', 'circle-opacity', [
-                        'case',
-                        ['==', ['get', 'step'], currentStep],
-                        1.0, // Fully opaque
-                        0.85
-                    ]);
-                }
-                // Also update lines if they exist (e.g. initial phase debugging)
-                if (this.map.getLayer('pf-isochrone-lines')) {
-                    this.map.setPaintProperty('pf-isochrone-lines', 'line-color', colorExpr);
-                    this.map.setPaintProperty('pf-isochrone-lines', 'line-width', [
-                        'case',
-                        ['==', ['get', 'step'], currentStep],
-                        4,
-                        2
-                    ]);
-                }
+                this._highlightIsochroneStep(currentStep);
             }
 
             const source = this.map.getSource('pf-boat-pos-source');
