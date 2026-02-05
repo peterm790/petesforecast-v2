@@ -1280,7 +1280,7 @@ export class RoutingControl {
                     'fill-opacity': 0.10
                 },
                 filter: ['==', '$type', 'Polygon']
-            });
+            }, 'places_country');
         }
         if (!this.map.getLayer('pf-finish-radius-outline')) {
             this.map.addLayer({
@@ -1293,7 +1293,7 @@ export class RoutingControl {
                     'line-opacity': 0.45
                 },
                 filter: ['==', '$type', 'Polygon']
-            });
+            }, 'places_country');
         }
 
         // Line Layer (Great Circle)
@@ -1311,7 +1311,7 @@ export class RoutingControl {
                 'line-dasharray': [2, 1]
             },
             filter: ['==', '$type', 'LineString']
-        });
+        }, 'places_country');
 
         // BBox Polygon Layer
         this.map.addLayer({
@@ -1323,7 +1323,7 @@ export class RoutingControl {
                 'fill-opacity': 0.1
             },
             filter: ['==', '$type', 'Polygon']
-        });
+        }, 'places_country');
 
         this.map.addLayer({
             id: 'pf-routing-bbox-outline',
@@ -1335,7 +1335,7 @@ export class RoutingControl {
                 'line-dasharray': [2, 2]
             },
             filter: ['==', '$type', 'Polygon']
-        });
+        }, 'places_country');
 
         // -- Initial Route Source & Layer --
         if (!this.map.getSource('pf-initial-route-source')) {
@@ -1358,7 +1358,7 @@ export class RoutingControl {
                     'line-width': 3,
                     'line-opacity': 0.7
                 }
-            });
+            }, 'places_country');
         }
 
         // -- Optimized Route Source & Layer --
@@ -1382,7 +1382,7 @@ export class RoutingControl {
                     'line-color': '#000000', // Black for Final Route
                     'line-width': 4
                 }
-            });
+            }, 'places_country');
         }
 
         // -- Isochrone (initial phase) Lines Source & Layer --
@@ -1413,7 +1413,7 @@ export class RoutingControl {
                     'line-width': 2,
                     'line-opacity': 0.9
                 }
-            });
+            }, 'places_country');
         }
 
         // -- Isochrone (optimisation phase) Points Source & Layer --
@@ -1439,7 +1439,7 @@ export class RoutingControl {
                     ],
                     'circle-opacity': 0.85
                 }
-            });
+            }, 'places_country');
         }
 
         // Boat Position Marker (Dot)
@@ -1460,7 +1460,7 @@ export class RoutingControl {
                     'circle-stroke-width': 2,
                     'circle-stroke-color': '#ffffff'
                 }
-            });
+            }, 'places_country');
         }
     }
 
