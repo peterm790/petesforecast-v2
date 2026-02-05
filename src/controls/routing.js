@@ -1,6 +1,7 @@
 import mapboxgl from 'mapbox-gl';
 import { LoadingOverlay } from '../loading_overlay/loading.js';
 import { formatLocal, formatUTC, parseInitTimeToDate } from '../util.js';
+import '../loading_overlay/loading.css';
 import './routing.css';
 
 export class RoutingControl {

@@ -5,19 +5,16 @@ import basemapStyle from './assets/basemapstyle.json';
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
 
-import { combineWindBytesToImage, computeWindSpeedFromUVBytes, createCMAP, createCategoricalPalette, fetchInitTimeRange, parseInitTimeToDate, generateInitTimes6h, getLocationFromIP } from './util.js';
+import { combineWindBytesToImage, computeWindSpeedFromUVBytes, createCMAP, createCategoricalPalette, getLocationFromIP } from './util.js';
+import { getInitDatesAsc, getLatestIso } from './data/init_time_store.js';
 import { MenuBar } from '@menu_bar/menubar.js';
 import '@menu_bar/menubar.css';
 import { TimeSlider } from '@time_slider/timeslider.js';
 import '@time_slider/timeslider.css';
-import './loading_overlay/loading.css';
 import { DataCache } from './data/cache.js';
 import weatherVariables from './assets/weather_variables.json';
 import { createLegendManager } from './controls/legend.js';
 import { createTooltipManager } from './controls/tooltip.js';
-import { RoutingControl } from './controls/routing.js';
-import { startTour } from './controls/tour.js';
-import { initAuth } from './auth/clerk.js';
 import './index.css'; // Import global CSS for location dot
 
 // Unit conversion helpers (affine y = a*x + b) derived from weather_variables.json per variable
@@ -71,10 +68,9 @@ function toIsoZ(d) { return d.toISOString().replace('.000Z', 'Z'); }
 let INIT_ISOS_ASC = null;
 let latestISO = null;
 async function loadInitRange() {
-    const [firstStr, latestStr] = await fetchInitTimeRange();
-    const sixHourlyDates = generateInitTimes6h(firstStr, latestStr);
-    INIT_ISOS_ASC = sixHourlyDates.map(toIsoZ);
-    latestISO = parseInitTimeToDate(latestStr).toISOString().replace('.000Z', 'Z');
+    const datesAsc = await getInitDatesAsc();
+    INIT_ISOS_ASC = datesAsc.map(toIsoZ);
+    latestISO = await getLatestIso();
 }
 function getInitIndexFromState(state) {
     if (!INIT_ISOS_ASC) throw new Error('Init times not loaded');
@@ -96,24 +92,17 @@ const map = new mapboxgl.Map({
     maxZoom: 15
 });
 
-const routingControl = new RoutingControl(map);
-// Remove initial mount here, we will mount it inside the menu stack later
-// routingControl.mount(document.body);
-routingControl.onRouteLoaded((leadHours) => {
-    if (timeSlider) {
-        timeSlider.setLeadHour(leadHours);
+let routingControl = null;
+let routingControlPromise = null;
+let pendingStartLocation = null;
+let authInitPromise = null;
+let tourModulePromise = null;
+
+function scheduleIdle(task, timeoutMs = 1500) {
+    if (typeof requestIdleCallback === 'function') {
+        return requestIdleCallback(() => task(), { timeout: timeoutMs });
     }
-});
-
-// Help Button creation moved to after MenuBar mount
-
-
-// Check if first visit
-if (!localStorage.getItem('pf-tour-shown')) {
-    setTimeout(() => {
-        startTour();
-        localStorage.setItem('pf-tour-shown', 'true');
-    }, 1000); // Small delay to let UI settle
+    return setTimeout(() => task(), timeoutMs);
 }
 
 // deck.gl overlay (lazy); created on first render
@@ -271,6 +260,97 @@ function leadsForFrequency(freq) {
     if (freq === '5d') return Array.from({ length: 120 }, (_, i) => i + 1);
     if (freq === '16d-3h') return Array.from({ length: 127 }, (_, i) => (i + 1) * 3); // 3..381
     throw new Error(`Unknown frequency: ${freq}`);
+}
+
+async function ensureTourModule() {
+    if (tourModulePromise) return tourModulePromise;
+    tourModulePromise = import('./controls/tour.js')
+        .then((mod) => mod)
+        .catch((err) => {
+            tourModulePromise = null;
+            throw err;
+        });
+    return tourModulePromise;
+}
+
+async function startTourLazy() {
+    try {
+        await ensureRoutingControl();
+    } catch (err) {
+        console.warn('Routing preload for tour failed:', err);
+    }
+    const mod = await ensureTourModule();
+    mod.startTour();
+}
+
+async function ensureAuth(target) {
+    if (authInitPromise) return authInitPromise;
+    authInitPromise = import('./auth/clerk.js')
+        .then(({ initAuth }) => initAuth(target))
+        .catch((err) => {
+            authInitPromise = null;
+            throw err;
+        });
+    return authInitPromise;
+}
+
+function syncRoutingControl(rc) {
+    if (!rc || !menu) return;
+    const state = menu.getState();
+    if (typeof rc.setShowLocalTime === 'function') {
+        rc.setShowLocalTime(!!state.showLocalTime);
+    }
+    if (typeof rc.setFrequency === 'function') {
+        rc.setFrequency(state.frequency);
+    }
+    const leads = leadsForFrequency(state.frequency);
+    rc.setTimeOptions(leads, state.initData);
+    if (INIT_ISOS_ASC && state.initData) {
+        try {
+            const idx = getInitIndexFromState(state);
+            if (typeof rc.setInitTimeIndex === 'function') {
+                rc.setInitTimeIndex(idx);
+            }
+        } catch (err) {
+            console.warn('Routing init index sync failed:', err);
+        }
+    }
+    if (state.initData && typeof rc.setCurrentTime === 'function') {
+        const initTime = new Date(state.initData).getTime();
+        const targetTime = new Date(initTime + currentLeadHours * 3600 * 1000);
+        rc.setCurrentTime(targetTime.toISOString());
+    }
+    if (pendingStartLocation && typeof rc.setStart === 'function') {
+        rc.setStart(pendingStartLocation);
+    }
+}
+
+async function ensureRoutingControl() {
+    if (routingControl) return routingControl;
+    if (!routingControlPromise) {
+        routingControlPromise = import('./controls/routing.js')
+            .then(({ RoutingControl }) => {
+                const rc = new RoutingControl(map);
+                rc.onRouteLoaded((leadHours) => {
+                    if (timeSlider) {
+                        timeSlider.setLeadHour(leadHours);
+                    }
+                });
+                routingControl = rc;
+                if (menu && menu.root) {
+                    rc.mount(menu.root);
+                } else {
+                    rc.mount(document.body);
+                }
+                syncRoutingControl(rc);
+                return rc;
+            })
+            .catch((err) => {
+                routingControlPromise = null;
+                throw err;
+            });
+    }
+    return routingControlPromise;
 }
 
 async function renderFromCache(state, leadHours) {
@@ -604,33 +684,11 @@ const menu = new MenuBar({
             // Defer any actions until init times are loaded and initData is set
             return;
         }
-        // Pass available leads to routing control for the dropdown
         if (routingControl) {
-            const leads = leadsForFrequency(state.frequency);
-            if (typeof routingControl.setShowLocalTime === 'function') {
-                routingControl.setShowLocalTime(!!state.showLocalTime);
-            }
-            if (typeof routingControl.setFrequency === 'function') {
-                routingControl.setFrequency(state.frequency);
-            }
-            routingControl.setTimeOptions(leads, state.initData);
-            
-            // Pass init time index to routing control API
-            if (INIT_ISOS_ASC) {
-                const idx = getInitIndexFromState(state);
-                routingControl.setInitTimeIndex(idx);
-            }
+            syncRoutingControl(routingControl);
         }
         
         timeSlider.setFromMenuState(state);
-        
-        // Update routing boat position if init time changed
-        if (routingControl && state.initData) {
-             // currentLeadHours is global state tracked from slider
-             const initTime = new Date(state.initData).getTime();
-             const targetTime = new Date(initTime + currentLeadHours * 3600 * 1000);
-             routingControl.setCurrentTime(targetTime.toISOString());
-        }
 
         if (meta && meta.requiresPreload) {
             await preloadAll(state);
@@ -648,20 +706,30 @@ menu.mount(document.body);
 const helpBtn = document.createElement('div');
 helpBtn.className = 'pf-help-btn';
 helpBtn.textContent = '?';
-helpBtn.onclick = () => startTour();
+helpBtn.onclick = () => {
+    startTourLazy().catch((err) => console.error('Tour load failed:', err));
+};
 if (menu.root) {
-    // Mount Routing Control into MenuBar container
-    // It should be below weather menu and above profile/help
-    routingControl.mount(menu.root);
-
     menu.root.appendChild(helpBtn);
-    // Initialize Auth (will insert profile button before help button)
-    initAuth(menu.root);
 } else {
     document.body.appendChild(helpBtn);
-    // Fallback if menu root not ready
-    initAuth(document.body);
-    routingControl.mount(document.body); // Fallback to body mount
+}
+
+// Lazy-load noncritical UI after first paint
+scheduleIdle(() => {
+    ensureRoutingControl().catch((err) => console.warn('Routing lazy load failed:', err));
+}, 1200);
+scheduleIdle(() => {
+    const target = menu.root || document.body;
+    ensureAuth(target).catch((err) => console.warn('Auth lazy load failed:', err));
+}, 1600);
+
+// Check if first visit
+if (!localStorage.getItem('pf-tour-shown')) {
+    setTimeout(() => {
+        startTourLazy().catch((err) => console.error('Tour load failed:', err));
+        localStorage.setItem('pf-tour-shown', 'true');
+    }, 1000); // Small delay to let UI settle
 }
 
 // Initialize slider from current menu state
@@ -669,26 +737,17 @@ timeSlider.setFromMenuState(menu.getState());
 
 // Initialize routing control time options
 const initialLeads = leadsForFrequency(menu.getState().frequency);
-routingControl.setTimeOptions(initialLeads, menu.getState().initData);
+if (routingControl) {
+    routingControl.setTimeOptions(initialLeads, menu.getState().initData);
+}
 
 // After first paint, load init-time range and kick off first preload+render
 requestAnimationFrame(async () => {
     try {
         await loadInitRange();
         menu.setState({ initData: latestISO });
-        // Also update routing options now that we have initData
-        const leads = leadsForFrequency(menu.getState().frequency);
-        if (typeof routingControl.setShowLocalTime === 'function') {
-            routingControl.setShowLocalTime(!!menu.getState().showLocalTime);
-        }
-        if (typeof routingControl.setFrequency === 'function') {
-            routingControl.setFrequency(menu.getState().frequency);
-        }
-        routingControl.setTimeOptions(leads, latestISO);
-        
-        // Default latest is the last index
-        if (INIT_ISOS_ASC) {
-            routingControl.setInitTimeIndex(INIT_ISOS_ASC.length - 1);
+        if (routingControl) {
+            syncRoutingControl(routingControl);
         }
     } catch (err) {
         console.error('Failed to load init-time range:', err);
@@ -807,8 +866,9 @@ function applyLocation(longitude, latitude, zoom = 6) {
         .addTo(map);
 
     // Default routing start to user location
-    if (routingControl) {
-        routingControl.setStart([longitude, latitude]);
+    pendingStartLocation = [longitude, latitude];
+    if (routingControl && typeof routingControl.setStart === 'function') {
+        routingControl.setStart(pendingStartLocation);
     }
 
     // Activate picker

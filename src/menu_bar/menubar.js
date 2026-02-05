@@ -1,7 +1,8 @@
 // Build-time discovery of available colormaps using Vite's globbing
 const CPT_FILES = import.meta.glob('/src/assets/cmaps/cpt-city/**/*.cpt', { query: '?raw', import: 'default' });
 import weatherVariables from '../assets/weather_variables.json';
-import { fetchInitTimeRange, generateInitTimes6h, formatLocal, formatUTC } from '../util.js';
+import { formatLocal, formatUTC } from '../util.js';
+import { getInitDatesAsc } from '../data/init_time_store.js';
 import { getNativeRange, setNativeRange } from '../data/range_store.js';
 
 function buildColormapIndex() {
@@ -301,8 +302,7 @@ export class MenuBar {
         // Fetch and populate asynchronously
         (async () => {
             try {
-                const [first, latest] = await fetchInitTimeRange();
-                const datesAsc = generateInitTimes6h(first, latest);
+                const datesAsc = await getInitDatesAsc();
                 this.initDates = datesAsc.slice().reverse(); // latest first
                 this._populateInitDateSelect();
                 select.disabled = false;
@@ -893,5 +893,4 @@ export class MenuBar {
         return container;
     }
 }
-
 
