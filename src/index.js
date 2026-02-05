@@ -170,15 +170,75 @@ function updateTooltipUnitFormat(unitString) {
     }
 }
 
+let npyWorker = null;
+let npyWorkerDisabled = false;
+let npyWorkerSeq = 0;
+const npyWorkerPending = new Map();
+
+async function parseNpyMainThread(arrayBuffer) {
+    const { default: NPY } = await import('npyjs');
+    const npy = new NPY();
+    return npy.load(arrayBuffer);
+}
+
+function getNpyWorker() {
+    if (npyWorkerDisabled || typeof Worker === 'undefined') {
+        return null;
+    }
+    if (!npyWorker) {
+        npyWorker = new Worker(new URL('./data/npy_worker.js', import.meta.url), { type: 'module' });
+        npyWorker.onmessage = (event) => {
+            const { id, data, shape, error } = event.data || {};
+            const pending = npyWorkerPending.get(id);
+            if (!pending) return;
+            npyWorkerPending.delete(id);
+            if (error) {
+                const err = new Error(error.message || 'Worker parse failed');
+                if (error.name) err.name = error.name;
+                if (error.stack) err.stack = error.stack;
+                pending.reject(err);
+                return;
+            }
+            pending.resolve({ data, shape });
+        };
+        npyWorker.onerror = (err) => {
+            npyWorkerDisabled = true;
+            for (const [, pending] of npyWorkerPending) {
+                pending.reject(err);
+            }
+            npyWorkerPending.clear();
+            try { npyWorker.terminate(); } catch {}
+            npyWorker = null;
+        };
+    }
+    return npyWorker;
+}
+
+async function parseNpyInWorker(arrayBuffer) {
+    const worker = getNpyWorker();
+    if (!worker) {
+        return parseNpyMainThread(arrayBuffer);
+    }
+    return new Promise((resolve, reject) => {
+        const id = ++npyWorkerSeq;
+        npyWorkerPending.set(id, { resolve, reject });
+        worker.postMessage({ id, buffer: arrayBuffer }, [arrayBuffer]);
+    });
+}
+
 async function fetchFrames(url, signal) {
     const response = await fetch(url, { method: 'GET', signal });
     if (!response.ok) {
         throw new Error(`Request failed with ${response.status} ${response.statusText}`);
     }
     const arrayBuffer = await response.arrayBuffer();
-    const { default: NPY } = await import('npyjs');
-    const npy = new NPY();
-    const { data: flat, shape } = await npy.load(arrayBuffer);
+    if (signal && signal.aborted) {
+        throw new DOMException('Aborted', 'AbortError');
+    }
+    const { data: flat, shape } = await parseNpyInWorker(arrayBuffer);
+    if (signal && signal.aborted) {
+        throw new DOMException('Aborted', 'AbortError');
+    }
 
     if (!Array.isArray(shape)) {
         throw new Error(`Invalid shape from API: ${JSON.stringify(shape)}`);
