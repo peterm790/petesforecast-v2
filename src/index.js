@@ -516,12 +516,14 @@ async function renderFromCache(state, leadHours) {
     deckOverlay.setProps({ layers });
 
     // Ensure routing layers are on top after deck.gl renders
-    // This fixes timing issues where deck.gl might render after routing layers are added
+    // This is the primary mechanism (was moved from render event listener)
     if (routingControl && typeof routingControl._ensureLayersOnTop === 'function') {
-        // Use setTimeout to ensure this runs after deck.gl has finished rendering
-        setTimeout(() => {
-            routingControl._ensureLayersOnTop();
-        }, 0);
+        // Use double requestAnimationFrame to ensure deck.gl has finished rendering
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                routingControl._ensureLayersOnTop();
+            });
+        });
     }
 
     // Keep last-rendered data for value picking

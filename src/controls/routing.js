@@ -1462,11 +1462,14 @@ export class RoutingControl {
                 }
             });
         }
+        
+        // Note: Layers are kept on top via _ensureLayersOnTop() called from index.js
+        // after deck.gl renders, not via render event listeners
     }
 
     _ensureLayersOnTop() {
         // Move all routing layers to the end of the layer stack to ensure they're on top
-        // This is called after deck.gl renders to fix timing issues in production
+        // This is called on every map render to fix timing issues between dev and production
         const routingLayerIds = [
             'pf-finish-radius-fill',
             'pf-finish-radius-outline',
@@ -1486,17 +1489,33 @@ export class RoutingControl {
             if (!style || !style.layers || style.layers.length === 0) return;
             
             // Find the last non-routing layer to use as anchor
-            let anchorLayerId = 'places_country'; // Default to last basemap layer
+            // We need to find the actual last layer that exists and isn't a routing layer
+            let anchorLayerId = null;
+            const existingLayers = [];
+            
+            // First, collect all existing routing layers and find the last non-routing layer
             for (let i = style.layers.length - 1; i >= 0; i--) {
                 const layerId = style.layers[i].id;
-                if (!routingLayerIds.includes(layerId) && this.map.getLayer(layerId)) {
+                if (routingLayerIds.includes(layerId)) {
+                    if (this.map.getLayer(layerId)) {
+                        existingLayers.push(layerId);
+                    }
+                } else if (!anchorLayerId && this.map.getLayer(layerId)) {
                     anchorLayerId = layerId;
                     break;
                 }
             }
             
-            // Move each routing layer to after the anchor (or after the previous routing layer)
-            // Maintain order: fill layers before their outline layers
+            // If no anchor found, use 'places_country' as fallback
+            if (!anchorLayerId) {
+                anchorLayerId = 'places_country';
+            }
+            
+            // If no routing layers exist, nothing to do
+            if (existingLayers.length === 0) return;
+            
+            // Always move routing layers to ensure they're at the end
+            // Process in reverse order so we build from the anchor outward
             let currentAnchor = anchorLayerId;
             routingLayerIds.forEach(layerId => {
                 if (this.map.getLayer(layerId)) {
@@ -1507,16 +1526,9 @@ export class RoutingControl {
                         currentAnchor = layerId;
                     } catch (err) {
                         // Layer might already be in correct position or anchor doesn't exist
-                        // Try to continue with next layer
+                        // Try to continue - if this layer exists, use it as next anchor
                         if (this.map.getLayer(layerId)) {
-                            // If move failed, try to get current position and use that as anchor
-                            const style = this.map.getStyle();
-                            if (style && style.layers) {
-                                const layerIndex = style.layers.findIndex(l => l.id === layerId);
-                                if (layerIndex >= 0 && layerIndex < style.layers.length - 1) {
-                                    currentAnchor = style.layers[layerIndex + 1].id;
-                                }
-                            }
+                            currentAnchor = layerId;
                         }
                     }
                 }
