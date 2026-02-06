@@ -1464,6 +1464,56 @@ export class RoutingControl {
         }
     }
 
+    _ensureLayersOnTop() {
+        // Move all routing layers to the end of the layer stack to ensure they're on top
+        // This is called after deck.gl renders to fix timing issues in production
+        const routingLayerIds = [
+            'pf-finish-radius-fill',
+            'pf-finish-radius-outline',
+            'pf-routing-line',
+            'pf-routing-bbox',
+            'pf-routing-bbox-outline',
+            'pf-initial-route-line',
+            'pf-result-line',
+            'pf-isochrone-lines',
+            'pf-isochrone-dots',
+            'pf-boat-pos-dot'
+        ];
+        
+        try {
+            // Get all layers in current order
+            const style = this.map.getStyle();
+            if (!style || !style.layers || style.layers.length === 0) return;
+            
+            // Find the last non-routing layer to use as anchor
+            let anchorLayerId = 'places_country'; // Default to last basemap layer
+            for (let i = style.layers.length - 1; i >= 0; i--) {
+                const layerId = style.layers[i].id;
+                if (!routingLayerIds.includes(layerId) && this.map.getLayer(layerId)) {
+                    anchorLayerId = layerId;
+                    break;
+                }
+            }
+            
+            // Move each routing layer to after the anchor (or after the previous routing layer)
+            let currentAnchor = anchorLayerId;
+            routingLayerIds.forEach(layerId => {
+                if (this.map.getLayer(layerId)) {
+                    try {
+                        // Move this routing layer after the current anchor
+                        this.map.moveLayer(layerId, currentAnchor);
+                        // Next routing layer should go after this one
+                        currentAnchor = layerId;
+                    } catch (err) {
+                        // Layer might already be in correct position or anchor doesn't exist
+                    }
+                }
+            });
+        } catch (err) {
+            // Silently fail if there's any issue
+        }
+    }
+
     _removeMapLayers() {
         if (this.map.getLayer('pf-finish-radius-outline')) this.map.removeLayer('pf-finish-radius-outline');
         if (this.map.getLayer('pf-finish-radius-fill')) this.map.removeLayer('pf-finish-radius-fill');
