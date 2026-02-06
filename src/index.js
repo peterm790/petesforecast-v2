@@ -515,6 +515,15 @@ async function renderFromCache(state, leadHours) {
 
     deckOverlay.setProps({ layers });
 
+    // Ensure routing layers are on top after deck.gl renders
+    // This fixes timing issues where deck.gl might render after routing layers are added
+    if (routingControl && typeof routingControl._ensureLayersOnTop === 'function') {
+        // Use setTimeout to ensure this runs after deck.gl has finished rendering
+        setTimeout(() => {
+            routingControl._ensureLayersOnTop();
+        }, 0);
+    }
+
     // Keep last-rendered data for value picking
     lastRasterImage = rasterImage;
     lastUWind = uwind || null;
