@@ -4,7 +4,7 @@ body {
   padding: 0;
   overflow: hidden;
   background-color: #1e1e1e;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 #map {
@@ -138,4 +138,53 @@ body {
   background: rgba(20, 25, 40, 0.95);
   border-color: rgba(255,255,255,0.4);
   box-shadow: 0 8px 18px rgba(0,0,0,0.32);
+}
+
+.pf-boat-btn {
+  position: relative;
+  width: 1.8rem;
+  height: 1.8rem;
+  padding: 0;
+  border-radius: 9999px;
+  background: rgba(20, 25, 40, 0.8);
+  border: 1px solid rgba(255,255,255,0.35);
+  color: #fff;
+  font-size: 0.83rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 1000;
+  backdrop-filter: blur(6px);
+  transition: transform 0.2s, background 0.2s, box-shadow 0.15s ease;
+  box-shadow: 0 6px 14px rgba(0,0,0,0.28);
+}
+
+.pf-boat-btn:hover {
+  transform: scale(1.03);
+  background: rgba(20, 25, 40, 0.95);
+  border-color: rgba(255,255,255,0.4);
+}
+
+.pf-boat-btn.active {
+  background: rgba(42, 90, 165, 0.92);
+  border-color: rgba(255,255,255,0.55);
+}
+
+.pf-boat-btn svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.pf-polar-overlay-root {
+  position: fixed;
+  inset: 0;
+  z-index: 950;
+  pointer-events: none;
 }

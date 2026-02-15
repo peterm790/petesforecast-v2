@@ -644,20 +644,86 @@ const menu = new MenuBar({
 });
 menu.mount(document.body);
 
+let polarOverlayController = null;
+let polarOverlayRoot = null;
+let boatBtn = null;
+
+function alignPolarOverlayToBoatButton() {
+    if (!polarOverlayController || !polarOverlayController.widget || !boatBtn) return;
+    const rect = boatBtn.getBoundingClientRect();
+    const top = Math.round(rect.top);
+    const rightMargin = 16;
+    const maxLeft = window.innerWidth - polarOverlayController.widget.offsetWidth - 8;
+    const left = Math.max(8, Math.min(maxLeft, window.innerWidth - polarOverlayController.widget.offsetWidth - rightMargin));
+    polarOverlayController.widget.style.top = `${top}px`;
+    polarOverlayController.widget.style.left = `${Math.round(left)}px`;
+}
+
+function setPolarOverlayOpen(isOpen) {
+    if (polarOverlayController) {
+        polarOverlayController.setVisible(isOpen);
+    }
+    if (boatBtn) {
+        boatBtn.classList.toggle('active', isOpen);
+    }
+    if (isOpen) {
+        alignPolarOverlayToBoatButton();
+    }
+}
+
+async function togglePolarOverlay() {
+    if (!polarOverlayController) {
+        polarOverlayRoot = document.createElement('div');
+        polarOverlayRoot.className = 'pf-polar-overlay-root';
+        document.body.appendChild(polarOverlayRoot);
+
+        const mod = await import('./polars/index.js');
+        polarOverlayController = await mod.mountPolarWidget({
+            host: polarOverlayRoot,
+            title: 'volvo70.pol',
+            polarFile: '/volvo70.pol',
+            standalone: false,
+            showClose: true,
+            placement: 'top-right',
+            onClose: () => setPolarOverlayOpen(false)
+        });
+        setPolarOverlayOpen(true);
+        return;
+    }
+
+    const currentlyOpen = boatBtn ? boatBtn.classList.contains('active') : false;
+    setPolarOverlayOpen(!currentlyOpen);
+}
+
 // Create Help Button and append to MenuBar container
 const helpBtn = document.createElement('div');
 helpBtn.className = 'pf-help-btn';
 helpBtn.textContent = '?';
 helpBtn.onclick = () => startTour();
+
+boatBtn = document.createElement('button');
+boatBtn.type = 'button';
+boatBtn.className = 'pf-boat-btn';
+boatBtn.setAttribute('aria-label', 'Toggle boat polar');
+boatBtn.innerHTML = `
+<svg viewBox="0 0 24 24" aria-hidden="true">
+  <path d="M4 14a8 8 0 1 1 16 0" />
+  <path d="M12 14l4-4" />
+  <circle cx="12" cy="14" r="1.2" />
+</svg>`;
+boatBtn.onclick = () => { togglePolarOverlay().catch((err) => console.error('Polar overlay failed:', err)); };
+
 if (menu.root) {
     // Mount Routing Control into MenuBar container
     // It should be below weather menu and above profile/help
     routingControl.mount(menu.root);
 
+    menu.root.appendChild(boatBtn);
     menu.root.appendChild(helpBtn);
     // Initialize Auth (will insert profile button before help button)
     initAuth(menu.root);
 } else {
+    document.body.appendChild(boatBtn);
     document.body.appendChild(helpBtn);
     // Fallback if menu root not ready
     initAuth(document.body);
