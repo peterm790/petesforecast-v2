@@ -122,6 +122,9 @@ export class RoutingControl {
         this.isochroneFeaturesByStep = new Map(); // Cache computed isochrone line features per step (performance)
         this.eventSource = null; // SSE stream for routing progress/results
         this._hasReceivedResult = false; // Track if final result has been received for early-termination handling
+        this._activeRouteRequest = null; // Tracks current stream request for best-effort server cancellation
+        this._routingStreamUrl = import.meta.env.VITE_ROUTING_STREAM_URL || 'https://peterm790--weather-routing-get-route.modal.run';
+        this._routingCancelUrl = import.meta.env.VITE_ROUTING_CANCEL_URL || '';
 
         // Ensure the default routing mode applies its preset values immediately.
         this._applyRoutingModeLock();
@@ -192,6 +195,62 @@ export class RoutingControl {
             try { this.abortController.abort(); } catch (e) { /* noop */ }
             this.abortController = null;
         }
+    }
+
+    _removeLoadingCancelButton() {
+        if (!this.loadingOverlay || !this.loadingOverlay.root) return;
+        const btn = this.loadingOverlay.root.querySelector('.pf-loading-cancel');
+        if (btn) btn.remove();
+    }
+
+    _deriveCancelCandidates(streamUrl) {
+        const out = new Set();
+        if (this._routingCancelUrl) out.add(this._routingCancelUrl);
+        if (!streamUrl || typeof streamUrl !== 'string') return Array.from(out);
+
+        out.add(streamUrl);
+        if (streamUrl.includes('get-route')) {
+            out.add(streamUrl.replace('get-route', 'cancel-route'));
+            out.add(streamUrl.replace('get-route', 'cancel'));
+        }
+        if (!streamUrl.endsWith('/cancel')) out.add(`${streamUrl.replace(/\/+$/, '')}/cancel`);
+        return Array.from(out);
+    }
+
+    async _sendServerCancel() {
+        const req = this._activeRouteRequest;
+        if (!req || !req.streamUrl) return;
+
+        const candidates = this._deriveCancelCandidates(req.streamUrl);
+        const params = new URLSearchParams(req.params || {});
+        params.set('cancel', '1');
+
+        await Promise.all(candidates.map(async (baseUrl) => {
+            if (!baseUrl) return;
+            const sep = baseUrl.includes('?') ? '&' : '?';
+            const url = `${baseUrl}${sep}${params.toString()}`;
+            try {
+                await fetch(url, { method: 'GET', mode: 'no-cors', keepalive: true });
+            } catch (err) {
+                console.debug('Route cancel request failed', baseUrl, err);
+            }
+        }));
+    }
+
+    async _cancelActiveRoute() {
+        // Preserve start/end/bbox; only cancel stream + computed outputs and return to form view.
+        this.loadingOverlay.show(1);
+        if (this.loadingOverlay.progressEl) {
+            this.loadingOverlay.progressEl.textContent = 'Cancelling...';
+        }
+        const cancelBtn = this.loadingOverlay?.root?.querySelector('.pf-loading-cancel');
+        if (cancelBtn) cancelBtn.disabled = true;
+        await this._yieldToPaint();
+        await this._sendServerCancel();
+        this.clearRoute();
+        this.loadingOverlay.hide();
+        this._removeLoadingCancelButton();
+        this._activeRouteRequest = null;
     }
 
     onRouteLoaded(callback) {
@@ -1524,6 +1583,11 @@ export class RoutingControl {
     }
 
     clearAll() {
+        this._closeRouteStream();
+        this.loadingOverlay.hide();
+        this._removeLoadingCancelButton();
+        this._activeRouteRequest = null;
+
         this.state.start = null;
         this.state.end = null;
         this.state.bbox = null;
@@ -1558,6 +1622,9 @@ export class RoutingControl {
         this._emitCurrentRoutePoint(null);
         this._hasReceivedInitial = false;
         this._closeRouteStream();
+        this.loadingOverlay.hide();
+        this._removeLoadingCancelButton();
+        this._activeRouteRequest = null;
 
         // Clear accumulated isochrone points
         if (this.isochronePointsByStep && typeof this.isochronePointsByStep.clear === 'function') {
@@ -1940,7 +2007,7 @@ export class RoutingControl {
             return;
         }
 
-        const url = "https://peterm790--weather-routing-get-route.modal.run";
+        const url = this._routingStreamUrl;
         
         const params = new URLSearchParams({
             start_lat: this.state.start[1],
@@ -1968,6 +2035,10 @@ export class RoutingControl {
             twa_change_threshold: String(this.state.twa_change_threshold),
             tack_penalty: String(this.state.tack_penalty)
         });
+        this._activeRouteRequest = {
+            streamUrl: url,
+            params: Object.fromEntries(params.entries())
+        };
 
         // Clear existing isochrone points for new route calculation
         this.isochronePointsByStep.clear();
@@ -1994,9 +2065,9 @@ export class RoutingControl {
                 cancelBtn.style.width = 'auto';
                 cancelBtn.style.padding = '4px 12px';
                 cancelBtn.style.fontSize = '12px';
-                cancelBtn.onclick = (e) => {
+                cancelBtn.onclick = async (e) => {
                     e.stopPropagation();
-                    this._closeRouteStream();
+                    await this._cancelActiveRoute();
                 };
                 this.loadingOverlay.progressEl.parentNode.appendChild(cancelBtn);
             }
@@ -2025,8 +2096,8 @@ export class RoutingControl {
                         this._hasReceivedResult = true;
                         this._closeRouteStream();
                         this.loadingOverlay.hide();
-                        const btn = this.loadingOverlay.root.querySelector('.pf-loading-cancel');
-                        if (btn) btn.remove();
+                        this._removeLoadingCancelButton();
+                        this._activeRouteRequest = null;
                     }
                 } catch (e) {
                     console.error('SSE message parse error:', e, ev?.data);
@@ -2039,8 +2110,8 @@ export class RoutingControl {
                 const wasCancelled = !this.eventSource; // already closed elsewhere
                 this._closeRouteStream();
                 this.loadingOverlay.hide();
-                const btn = this.loadingOverlay.root.querySelector('.pf-loading-cancel');
-                if (btn) btn.remove();
+                this._removeLoadingCancelButton();
+                this._activeRouteRequest = null;
                 if (!wasCancelled) {
                     // Distinguish likely non-convergence (stream ended without a result after optimisation started)
                     if (this._hasReceivedInitial && !this._hasReceivedResult) {
@@ -2054,8 +2125,8 @@ export class RoutingControl {
             console.error("Route SSE setup failed:", err);
             this._closeRouteStream();
             this.loadingOverlay.hide();
-            const btn = this.loadingOverlay.root.querySelector('.pf-loading-cancel');
-            if (btn) btn.remove();
+            this._removeLoadingCancelButton();
+            this._activeRouteRequest = null;
             alert("Routing failed: " + err.message);
         }
     }
