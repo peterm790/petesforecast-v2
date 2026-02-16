@@ -241,13 +241,44 @@
   stroke-width: 2.08;
 }
 
+#polarPlot .calc-marker {
+  fill: #ff3b30;
+  stroke: #fff;
+  stroke-width: 1.4;
+}
+
+#polarPlot .route-marker {
+  fill: #27d95a;
+  stroke: #06110a;
+  stroke-width: 1.6;
+}
+
 @media (max-width: 900px) {
   .polar-widget {
     --side-width: 170px;
-    min-width: 500px;
+  }
+}
+
+@media (max-width: 1200px) {
+  .polar-widget {
+    max-width: 66vw;
+    min-width: min(420px, calc(100vw - 24px));
+    --side-width: 162px;
   }
 
   .polar-widget-body {
-    grid-template-columns: var(--side-width) var(--plot-width, 320px);
+    grid-template-columns: var(--side-width) minmax(0, 1fr);
+  }
+
+  .polar-canvas-wrap {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 900px) {
+  .polar-widget {
+    --side-width: 148px;
+    min-width: min(360px, calc(100vw - 16px));
   }
 }

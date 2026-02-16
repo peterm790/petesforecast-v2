@@ -147,7 +147,7 @@ function buildPath(rows, twsIndex, cx, cy, radius, maxSpeed) {
     .join(' ');
 }
 
-function drawPolar(svg, legend, data, maxPlotTws) {
+function drawPolar(svg, legend, data, maxPlotTws, markers = {}) {
   const canvasWrap = svg.closest('.polar-canvas-wrap');
   const wrapRect = canvasWrap ? canvasWrap.getBoundingClientRect() : svg.getBoundingClientRect();
   const height = Math.max(420, Math.floor(wrapRect.height || 620));
@@ -260,6 +260,21 @@ function drawPolar(svg, legend, data, maxPlotTws) {
     li.append(sw, tx);
     legend.appendChild(li);
   });
+
+  const drawMarker = (marker, className, dotRadius) => {
+    if (!marker || !Number.isFinite(marker.twa) || !Number.isFinite(marker.speed) || marker.speed < 0) return;
+    const r = (marker.speed / maxSpeed) * radius;
+    const p = polarToXY(cx, cy, r, marker.twa);
+    const dot = document.createElementNS(ns, 'circle');
+    dot.setAttribute('class', className);
+    dot.setAttribute('cx', p.x.toFixed(2));
+    dot.setAttribute('cy', p.y.toFixed(2));
+    dot.setAttribute('r', String(dotRadius));
+    svg.appendChild(dot);
+  };
+
+  drawMarker(markers.calc, 'calc-marker', 4.8);
+  drawMarker(markers.route, 'route-marker', 5.2);
 }
 
 function mount(host, { title = 'volvo70.pol', standalone = false, showClose = false } = {}) {
@@ -425,6 +440,27 @@ export async function mountPolarWidget({
 
   const text = await response.text();
   const data = parsePol(text);
+  let currentCalcMarker = null;
+  let currentRouteMarker = null;
+  const twas = data.rows.map((r) => r.twa);
+  const twss = data.tws;
+
+  const clampMarker = (markerInput, allowInterpolateSpeed = true) => {
+    if (!markerInput) return null;
+    const twaInputRaw = Number.parseFloat(markerInput.twa);
+    const twsRaw = Number.parseFloat(markerInput.tws);
+    if (!Number.isFinite(twaInputRaw) || !Number.isFinite(twsRaw)) return null;
+    const twaRaw = Math.abs(twaInputRaw);
+    const twa = Math.max(twas[0], Math.min(twaRaw, twas[twas.length - 1]));
+    const tws = Math.max(twss[0], Math.min(twsRaw, twss[twss.length - 1]));
+    const speedRaw = Number.parseFloat(markerInput.speed);
+    const speed = Number.isFinite(speedRaw)
+      ? speedRaw
+      : (allowInterpolateSpeed ? interpolateSpeed(data, twa, tws) : NaN);
+    if (!Number.isFinite(speed) || speed < 0) return null;
+    return { twa, tws, speed };
+  };
+
   const getClampedMaxPlotTws = () => {
     const raw = Number.parseFloat(maxTwsInput.value);
     if (!Number.isFinite(raw)) return 30;
@@ -434,25 +470,26 @@ export async function mountPolarWidget({
   };
 
   const updatePlot = () => {
-    drawPolar(svg, legend, data, getClampedMaxPlotTws());
+    drawPolar(svg, legend, data, getClampedMaxPlotTws(), {
+      calc: currentCalcMarker,
+      route: currentRouteMarker
+    });
   };
   updatePlot();
-  const twas = data.rows.map((r) => r.twa);
-  const twss = data.tws;
 
   const updateSpeed = () => {
-    const twaRaw = Number.parseFloat(twaInput.value);
-    const twsRaw = Number.parseFloat(twsInput.value);
-    if (!Number.isFinite(twaRaw) || !Number.isFinite(twsRaw)) {
+    const marker = clampMarker({ twa: twaInput.value, tws: twsInput.value }, true);
+    if (!marker) {
       speedOutput.textContent = '-';
+      currentCalcMarker = null;
+      updatePlot();
       return;
     }
-    const twa = Math.max(twas[0], Math.min(twaRaw, twas[twas.length - 1]));
-    const tws = Math.max(twss[0], Math.min(twsRaw, twss[twss.length - 1]));
-    if (twa !== twaRaw) twaInput.value = twa.toString();
-    if (tws !== twsRaw) twsInput.value = tws.toString();
-    const speed = interpolateSpeed(data, twa, tws);
-    speedOutput.textContent = `${speed.toFixed(2)} kn`;
+    if (Number.parseFloat(twaInput.value) !== marker.twa) twaInput.value = marker.twa.toString();
+    if (Number.parseFloat(twsInput.value) !== marker.tws) twsInput.value = marker.tws.toString();
+    speedOutput.textContent = `${marker.speed.toFixed(2)} kn`;
+    currentCalcMarker = marker;
+    updatePlot();
   };
 
   twaInput.addEventListener('input', updateSpeed);
@@ -473,6 +510,10 @@ export async function mountPolarWidget({
     },
     setVisible(visible) {
       mountedHost.style.display = visible ? '' : 'none';
+    },
+    setRouteMarker(markerInput) {
+      currentRouteMarker = clampMarker(markerInput, true);
+      updatePlot();
     },
     widget,
     root: mountedHost,

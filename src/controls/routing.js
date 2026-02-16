@@ -163,6 +163,7 @@ export class RoutingControl {
         
         // Callbacks
         this.onRouteLoadedHandler = null;
+        this.onCurrentRoutePointHandler = null;
         
         // Touch handling state
         this.longPressTimer = null;
@@ -195,6 +196,16 @@ export class RoutingControl {
 
     onRouteLoaded(callback) {
         this.onRouteLoadedHandler = callback;
+    }
+
+    onCurrentRoutePointChange(callback) {
+        this.onCurrentRoutePointHandler = callback;
+    }
+
+    _emitCurrentRoutePoint(point) {
+        if (typeof this.onCurrentRoutePointHandler === 'function') {
+            this.onCurrentRoutePointHandler(point);
+        }
     }
 
     isContextMenuActive() {
@@ -1517,6 +1528,7 @@ export class RoutingControl {
         this.state.end = null;
         this.state.bbox = null;
         this.routeData = null;
+        this._emitCurrentRoutePoint(null);
         this._updateUIInputs();
         this._removeMarkers();
         this._updateGeoJSON();
@@ -1543,6 +1555,7 @@ export class RoutingControl {
     clearRoute() {
         // Clear only computed route outputs, preserving start/end/bbox + their markers.
         this.routeData = null;
+        this._emitCurrentRoutePoint(null);
         this._hasReceivedInitial = false;
         this._closeRouteStream();
 
@@ -2465,6 +2478,7 @@ export class RoutingControl {
         // If we don't yet have a final route (routeData), still try to highlight
         // the isochrone for the viewed hour using initTime + leadTimeStart.
         if (!this.routeData || !this.routeData.length) {
+            this._emitCurrentRoutePoint(null);
             if (this.initTimeMs !== null && typeof this.state?.leadTimeStart === 'number') {
                 const targetTimeMs = new Date(isoTime).getTime();
                 if (Number.isFinite(targetTimeMs)) {
@@ -2552,6 +2566,17 @@ export class RoutingControl {
                 if (closestPoint.heading !== undefined) setText('hdg', `${Math.round(closestPoint.heading)}°`);
                 if (closestPoint.boat_speed !== undefined) setText('spd', `${closestPoint.boat_speed.toFixed(1)} kn`);
             }
+
+            this._emitCurrentRoutePoint({
+                time: closestPoint.time,
+                lat: closestPoint.lat,
+                lon: closestPoint.lon,
+                twa: closestPoint.twa,
+                tws: closestPoint.tws,
+                boatSpeed: closestPoint.boat_speed
+            });
+        } else {
+            this._emitCurrentRoutePoint(null);
         }
     }
 }

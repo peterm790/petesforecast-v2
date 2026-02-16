@@ -97,11 +97,33 @@ const map = new mapboxgl.Map({
 });
 
 const routingControl = new RoutingControl(map);
+let polarOverlayController = null;
+let polarOverlayRoot = null;
+let boatBtn = null;
 // Remove initial mount here, we will mount it inside the menu stack later
 // routingControl.mount(document.body);
 routingControl.onRouteLoaded((leadHours) => {
     if (timeSlider) {
         timeSlider.setLeadHour(leadHours);
+    }
+});
+let latestRoutePolarMarker = null;
+routingControl.onCurrentRoutePointChange((point) => {
+    if (
+        point &&
+        Number.isFinite(point.twa) &&
+        Number.isFinite(point.tws)
+    ) {
+        latestRoutePolarMarker = {
+            twa: point.twa,
+            tws: point.tws,
+            speed: Number.isFinite(point.boatSpeed) ? point.boatSpeed : undefined
+        };
+    } else {
+        latestRoutePolarMarker = null;
+    }
+    if (polarOverlayController && typeof polarOverlayController.setRouteMarker === 'function') {
+        polarOverlayController.setRouteMarker(latestRoutePolarMarker);
     }
 });
 
@@ -644,10 +666,6 @@ const menu = new MenuBar({
 });
 menu.mount(document.body);
 
-let polarOverlayController = null;
-let polarOverlayRoot = null;
-let boatBtn = null;
-
 function alignPolarOverlayToBoatButton() {
     if (!polarOverlayController || !polarOverlayController.widget || !boatBtn) return;
     const rect = boatBtn.getBoundingClientRect();
@@ -687,6 +705,9 @@ async function togglePolarOverlay() {
             placement: 'top-right',
             onClose: () => setPolarOverlayOpen(false)
         });
+        if (typeof polarOverlayController.setRouteMarker === 'function') {
+            polarOverlayController.setRouteMarker(latestRoutePolarMarker);
+        }
         setPolarOverlayOpen(true);
         return;
     }
