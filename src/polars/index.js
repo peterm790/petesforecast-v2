@@ -1,5 +1,14 @@
 import './polar.css';
 
+const DEFAULT_CLOUDFLARE_POLAR = 'https://data.offshoreweatherrouting.com/polars/volvo70.pol';
+const DEFAULT_LOCAL_PROXY_POLAR = '/cf-polars/volvo70.pol';
+function defaultPolarUrl() {
+  if (typeof window === 'undefined') return DEFAULT_CLOUDFLARE_POLAR;
+  const host = window.location.hostname;
+  if (host === 'localhost' || host === '127.0.0.1') return DEFAULT_LOCAL_PROXY_POLAR;
+  return DEFAULT_CLOUDFLARE_POLAR;
+}
+
 function parsePol(text) {
   const lines = text
     .split(/\r?\n/)
@@ -308,8 +317,7 @@ function mount(host, { title = 'volvo70.pol', standalone = false, showClose = fa
   host.innerHTML = `
     <main class="polar-stage ${standalone ? 'polar-stage-standalone' : 'polar-stage-overlay'}">
       <section class="polar-widget" id="polarWidget">
-        <header class="polar-widget-head" id="polarDragHandle">
-          <h1>${title}</h1>
+        <header class="polar-widget-head">
           ${showClose ? '<button class="polar-close-btn" id="polarCloseBtn" aria-label="Close polar">x</button>' : ''}
         </header>
         <div class="polar-widget-body">
@@ -317,6 +325,12 @@ function mount(host, { title = 'volvo70.pol', standalone = false, showClose = fa
             <svg id="polarPlot" aria-label="Polar plot" role="img"></svg>
           </div>
           <aside class="polar-side">
+            <section class="polar-card polar-select-card">
+              <label>
+                Boat Polar
+                <select id="polarSelectControl" class="polar-select-control" aria-label="Select polar"></select>
+              </label>
+            </section>
             <section class="polar-card polar-calc-card">
               <div class="polar-func-title">BSP = f(TWA, TWS)</div>
               <div class="polar-func-inputs">
@@ -352,8 +366,9 @@ function mount(host, { title = 'volvo70.pol', standalone = false, showClose = fa
   return {
     host,
     widget: host.querySelector('#polarWidget'),
-    dragHandle: host.querySelector('#polarDragHandle'),
+    dragHandle: host.querySelector('#polarWidget'),
     closeBtn: host.querySelector('#polarCloseBtn'),
+    polarSelect: host.querySelector('#polarSelectControl'),
     svg: host.querySelector('#polarPlot'),
     legend: host.querySelector('#polarLegend'),
     panel: host.querySelector('.polar-canvas-wrap'),
@@ -387,6 +402,8 @@ function initFloatingWidget(widget, dragHandle, onChange, placement = 'center') 
   let drag = null;
   dragHandle.addEventListener('pointerdown', (event) => {
     if (event.button !== 0) return;
+    const target = event.target;
+    if (target instanceof Element && target.closest('input, select, button, label, option')) return;
     drag = {
       startX: event.clientX,
       startY: event.clientY,
@@ -431,7 +448,9 @@ function initFloatingWidget(widget, dragHandle, onChange, placement = 'center') 
 export async function mountPolarWidget({
   host,
   title = 'volvo70.pol',
-  polarFile = '/volvo70.pol',
+  polarFile = defaultPolarUrl(),
+  polarOptions = [],
+  onPolarSelect = null,
   standalone = false,
   showClose = false,
   onClose = null,
@@ -445,6 +464,7 @@ export async function mountPolarWidget({
     widget,
     dragHandle,
     closeBtn,
+    polarSelect,
     svg,
     legend,
     panel,
@@ -453,20 +473,39 @@ export async function mountPolarWidget({
     maxTwsInput,
     speedOutput
   } = mount(mountHost, { title, standalone, showClose });
-  const response = await fetch(polarFile);
-  if (!response.ok) {
-    throw new Error(`Unable to load ${polarFile} (${response.status})`);
-  }
-
-  const text = await response.text();
-  const data = parsePol(text);
+  let data = null;
+  let twas = [];
+  let twss = [];
   let currentCalcMarker = null;
   let currentRouteMarker = null;
   let currentMapPalette = null;
-  const twas = data.rows.map((r) => r.twa);
-  const twss = data.tws;
+  let currentPolarFile = '';
+  let currentPolarName = (typeof title === 'string' && title.endsWith('.pol')) ? title.slice(0, -4) : String(title || 'volvo70');
+  let loadVersion = 0;
+  let suppressPolarSelectChange = false;
+
+  const setPolarOptionsUI = (options, selectedPolarName = currentPolarName) => {
+    if (!polarSelect) return;
+    const normalized = Array.from(new Set((Array.isArray(options) ? options : [])
+      .map((v) => (typeof v === 'string' ? v.trim() : ''))
+      .filter(Boolean)));
+    if (!normalized.includes(selectedPolarName)) normalized.push(selectedPolarName);
+    normalized.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+
+    suppressPolarSelectChange = true;
+    polarSelect.innerHTML = '';
+    normalized.forEach((name) => {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      polarSelect.appendChild(opt);
+    });
+    polarSelect.value = selectedPolarName;
+    suppressPolarSelectChange = false;
+  };
 
   const clampMarker = (markerInput, allowInterpolateSpeed = true) => {
+    if (!data || twas.length === 0 || twss.length === 0) return null;
     if (!markerInput) return null;
     const twaInputRaw = Number.parseFloat(markerInput.twa);
     const twsRaw = Number.parseFloat(markerInput.tws);
@@ -491,14 +530,24 @@ export async function mountPolarWidget({
   };
 
   const updatePlot = () => {
+    if (!data) {
+      svg.innerHTML = '';
+      legend.innerHTML = '';
+      return;
+    }
     drawPolar(svg, legend, data, getClampedMaxPlotTws(), {
       calc: currentCalcMarker,
       route: currentRouteMarker
     }, currentMapPalette);
   };
-  updatePlot();
 
   const updateSpeed = () => {
+    if (!data) {
+      speedOutput.textContent = '-';
+      currentCalcMarker = null;
+      updatePlot();
+      return;
+    }
     const marker = clampMarker({ twa: twaInput.value, tws: twsInput.value }, true);
     if (!marker) {
       speedOutput.textContent = '-';
@@ -521,10 +570,52 @@ export async function mountPolarWidget({
     currentCalcMarker = marker;
   };
 
+  const loadPolarSource = async ({ title: nextTitle = null, polarFile: nextPolarFile, polarName: nextPolarName = null } = {}) => {
+    if (typeof nextPolarFile !== 'string' || !nextPolarFile.trim()) {
+      throw new Error('Polar URL is required');
+    }
+    const requestId = ++loadVersion;
+    const response = await fetch(nextPolarFile);
+    if (!response.ok) {
+      throw new Error(`Unable to load ${nextPolarFile} (${response.status})`);
+    }
+    const text = await response.text();
+    const parsed = parsePol(text);
+    if (requestId !== loadVersion) return;
+
+    currentPolarFile = nextPolarFile;
+    const inferredName = (typeof nextPolarName === 'string' && nextPolarName.trim())
+      ? nextPolarName.trim()
+      : ((typeof nextTitle === 'string' && nextTitle.endsWith('.pol')) ? nextTitle.slice(0, -4) : currentPolarName);
+    currentPolarName = inferredName;
+    data = parsed;
+    twas = data.rows.map((r) => r.twa);
+    twss = data.tws;
+
+    setPolarOptionsUI(polarOptions, currentPolarName);
+    currentRouteMarker = clampMarker(currentRouteMarker, true);
+    if (currentRouteMarker) {
+      syncCalculatorToMarker(currentRouteMarker);
+    } else {
+      updateSpeed();
+    }
+    updatePlot();
+  };
+
   twaInput.addEventListener('input', updateSpeed);
   twsInput.addEventListener('input', updateSpeed);
   maxTwsInput.addEventListener('input', updatePlot);
-  updateSpeed();
+  if (polarSelect) {
+    polarSelect.addEventListener('change', () => {
+      if (suppressPolarSelectChange) return;
+      const next = polarSelect.value;
+      if (!next || next === currentPolarName) return;
+      currentPolarName = next;
+      if (typeof onPolarSelect === 'function') onPolarSelect(next);
+    });
+  }
+  setPolarOptionsUI(polarOptions, currentPolarName);
+  await loadPolarSource({ title, polarFile, polarName: currentPolarName });
 
   const cleanupFloating = initFloatingWidget(widget, dragHandle, updatePlot, placement);
 
@@ -553,6 +644,17 @@ export async function mountPolarWidget({
       currentMapPalette = Array.isArray(palette) ? palette : null;
       updatePlot();
     },
+    async setPolarSource({ title: nextTitle, polarFile: nextPolarFile, polarName: nextPolarName } = {}) {
+      await loadPolarSource({
+        title: nextTitle || `${currentPolarName}.pol`,
+        polarFile: nextPolarFile || currentPolarFile,
+        polarName: nextPolarName || currentPolarName
+      });
+    },
+    setPolarOptions(nextOptions) {
+      polarOptions = Array.isArray(nextOptions) ? [...nextOptions] : polarOptions;
+      setPolarOptionsUI(polarOptions, currentPolarName);
+    },
     widget,
     root: mountedHost,
     panel
@@ -563,7 +665,7 @@ if (typeof window !== 'undefined' && window.location.pathname.startsWith('/polar
   mountPolarWidget({
     standalone: true,
     title: 'volvo70.pol',
-    polarFile: '/volvo70.pol',
+    polarFile: defaultPolarUrl(),
     showClose: false,
     placement: 'center'
   }).catch((error) => {

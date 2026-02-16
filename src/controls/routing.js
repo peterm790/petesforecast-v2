@@ -144,6 +144,8 @@ export class RoutingControl {
             minLon: null, minLat: null, maxLon: null, maxLat: null
         };
         this.timeSelect = null;
+        this.polarSelect = null;
+        this.polarOptions = [];
         this.advancedOpen = false;
         this.advancedSection = null;
         this.advancedToggleBtn = null;
@@ -167,6 +169,7 @@ export class RoutingControl {
         // Callbacks
         this.onRouteLoadedHandler = null;
         this.onCurrentRoutePointHandler = null;
+        this.onPolarFileChangeHandler = null;
         
         // Touch handling state
         this.longPressTimer = null;
@@ -261,6 +264,46 @@ export class RoutingControl {
         this.onCurrentRoutePointHandler = callback;
     }
 
+    onPolarFileChange(callback) {
+        this.onPolarFileChangeHandler = callback;
+    }
+
+    _emitPolarFileChange(polarFile) {
+        if (typeof this.onPolarFileChangeHandler === 'function') {
+            this.onPolarFileChangeHandler(polarFile);
+        }
+    }
+
+    getPolarFile() {
+        return this.state.polar_file;
+    }
+
+    getPolarOptions() {
+        if (Array.isArray(this.polarOptions) && this.polarOptions.length > 0) {
+            return [...this.polarOptions];
+        }
+        if (this.polarSelect) {
+            return Array.from(this.polarSelect.options).map((o) => o.value).filter(Boolean);
+        }
+        return [this.state.polar_file];
+    }
+
+    setPolarFile(polarFile) {
+        if (typeof polarFile !== 'string' || !polarFile.trim()) return;
+        const next = polarFile.trim();
+        const prev = this.state.polar_file;
+        this.state.polar_file = next;
+
+        if (this.polarSelect && this.polarSelect.value !== next) {
+            const hasOption = Array.from(this.polarSelect.options).some((o) => o.value === next);
+            if (hasOption) this.polarSelect.value = next;
+        }
+
+        if (next !== prev) {
+            this._emitPolarFileChange(this.state.polar_file);
+        }
+    }
+
     _emitCurrentRoutePoint(point) {
         if (typeof this.onCurrentRoutePointHandler === 'function') {
             this.onCurrentRoutePointHandler(point);
@@ -275,6 +318,7 @@ export class RoutingControl {
         this._createUI(target);
         this._initMapLayers();
         this._initContextMenu();
+        this._emitPolarFileChange(this.state.polar_file);
         
         this.map.on('contextmenu', this._onMapRightClick);
         this.map.on('click', this._onMapClick); // To close context menu or trigger cmd-click
@@ -369,8 +413,11 @@ export class RoutingControl {
         // Start Time Panel
         formView.appendChild(this._createTimePanel());
 
-        // Polar File Panel
-        formView.appendChild(this._createPolarPanel());
+        // Polar selection moved to the polar viewer header; keep hidden panel so existing
+        // option/state wiring remains centralized in this control.
+        const polarPanel = this._createPolarPanel();
+        polarPanel.style.display = 'none';
+        formView.appendChild(polarPanel);
 
         // Routing Mode Panel (locks/unlocks advanced settings)
         formView.appendChild(this._createRoutingModePanel());
@@ -1024,6 +1071,8 @@ export class RoutingControl {
         ];
         
         options.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+        this.polarOptions = [...options];
+        this.polarSelect = select;
 
         options.forEach(optVal => {
             const opt = document.createElement('option');
@@ -1037,7 +1086,7 @@ export class RoutingControl {
         });
         
         select.addEventListener('change', () => {
-            this.state.polar_file = select.value;
+            this.setPolarFile(select.value);
         });
 
         panel.appendChild(select);
