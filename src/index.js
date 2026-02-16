@@ -695,9 +695,10 @@ function alignPolarOverlayToBoatButton() {
     if (!polarOverlayController || !polarOverlayController.widget || !boatBtn) return;
     const rect = boatBtn.getBoundingClientRect();
     const top = Math.round(rect.top);
-    const rightMargin = 16;
+    const gap = 8;
     const maxLeft = window.innerWidth - polarOverlayController.widget.offsetWidth - 8;
-    const left = Math.max(8, Math.min(maxLeft, window.innerWidth - polarOverlayController.widget.offsetWidth - rightMargin));
+    const preferredLeft = Math.round(rect.left - polarOverlayController.widget.offsetWidth - gap);
+    const left = Math.max(8, Math.min(maxLeft, preferredLeft));
     polarOverlayController.widget.style.top = `${top}px`;
     polarOverlayController.widget.style.left = `${Math.round(left)}px`;
 }
