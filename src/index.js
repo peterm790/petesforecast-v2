@@ -126,6 +126,7 @@ routingControl.onCurrentRoutePointChange((point) => {
         polarOverlayController.setRouteMarker(latestRoutePolarMarker);
     }
 });
+let latestMapPalette = null;
 
 // Help Button creation moved to after MenuBar mount
 
@@ -327,6 +328,10 @@ async function renderFromCache(state, leadHours) {
     const palette = def.categorical
         ? createCategoricalPalette(def.absence_colour || '#000000', def.presence_colour || '#ffffff')
         : await createCMAP(state.colormapGenre, state.colormap, dataMin, dataMax);
+    latestMapPalette = palette;
+    if (polarOverlayController && typeof polarOverlayController.setMapPalette === 'function') {
+        polarOverlayController.setMapPalette(latestMapPalette);
+    }
     let vectorWind = null;
     if (uwind && vwind) {
         vectorWind = combineWindBytesToImage(uwind, vwind);
@@ -707,6 +712,9 @@ async function togglePolarOverlay() {
         });
         if (typeof polarOverlayController.setRouteMarker === 'function') {
             polarOverlayController.setRouteMarker(latestRoutePolarMarker);
+        }
+        if (typeof polarOverlayController.setMapPalette === 'function') {
+            polarOverlayController.setMapPalette(latestMapPalette);
         }
         setPolarOverlayOpen(true);
         return;

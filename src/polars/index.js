@@ -126,6 +126,14 @@ function speedToColorNormalized(tws, maxTws) {
   return ORC_COLOR_STOPS[ORC_COLOR_STOPS.length - 1][1];
 }
 
+function samplePaletteAtFraction(palette, fraction) {
+  if (!Array.isArray(palette) || palette.length === 0) return null;
+  const t = Math.max(0, Math.min(1, Number.isFinite(fraction) ? fraction : 0));
+  if (palette.length === 1) return palette[0]?.[1] || null;
+  const idx = Math.round(t * (palette.length - 1));
+  return palette[idx]?.[1] || null;
+}
+
 function polarToXY(cx, cy, r, angleDeg) {
   const a = ((angleDeg - 90) * Math.PI) / 180;
   return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
@@ -147,7 +155,7 @@ function buildPath(rows, twsIndex, cx, cy, radius, maxSpeed) {
     .join(' ');
 }
 
-function drawPolar(svg, legend, data, maxPlotTws, markers = {}) {
+function drawPolar(svg, legend, data, maxPlotTws, markers = {}, mapPalette = null) {
   const canvasWrap = svg.closest('.polar-canvas-wrap');
   const wrapRect = canvasWrap ? canvasWrap.getBoundingClientRect() : svg.getBoundingClientRect();
   const height = Math.max(420, Math.floor(wrapRect.height || 620));
@@ -240,8 +248,17 @@ function drawPolar(svg, legend, data, maxPlotTws, markers = {}) {
     svg.appendChild(label);
   });
 
+  const twsToColor = (tws) => {
+    if (Array.isArray(mapPalette) && mapPalette.length > 0) {
+      const frac = twsLimit > 0 ? tws / twsLimit : 0;
+      const fromMap = samplePaletteAtFraction(mapPalette, frac);
+      if (fromMap) return fromMap;
+    }
+    return speedToColorNormalized(tws, twsLimit);
+  };
+
   visibleTws.forEach(({ tws, i }) => {
-    const color = speedToColorNormalized(tws, twsLimit);
+    const color = twsToColor(tws);
 
     const sb = document.createElementNS(ns, 'path');
     sb.setAttribute('class', `line tws-${Math.round(tws)}`);
@@ -270,6 +287,9 @@ function drawPolar(svg, legend, data, maxPlotTws, markers = {}) {
     dot.setAttribute('cx', p.x.toFixed(2));
     dot.setAttribute('cy', p.y.toFixed(2));
     dot.setAttribute('r', String(dotRadius));
+    if (className === 'route-marker' && Number.isFinite(marker.tws)) {
+      dot.style.fill = twsToColor(marker.tws);
+    }
     svg.appendChild(dot);
   };
 
@@ -442,6 +462,7 @@ export async function mountPolarWidget({
   const data = parsePol(text);
   let currentCalcMarker = null;
   let currentRouteMarker = null;
+  let currentMapPalette = null;
   const twas = data.rows.map((r) => r.twa);
   const twss = data.tws;
 
@@ -473,7 +494,7 @@ export async function mountPolarWidget({
     drawPolar(svg, legend, data, getClampedMaxPlotTws(), {
       calc: currentCalcMarker,
       route: currentRouteMarker
-    });
+    }, currentMapPalette);
   };
   updatePlot();
 
@@ -490,6 +511,14 @@ export async function mountPolarWidget({
     speedOutput.textContent = `${marker.speed.toFixed(2)} kn`;
     currentCalcMarker = marker;
     updatePlot();
+  };
+
+  const syncCalculatorToMarker = (marker) => {
+    if (!marker) return;
+    twaInput.value = marker.twa.toFixed(1);
+    twsInput.value = marker.tws.toFixed(1);
+    speedOutput.textContent = `${marker.speed.toFixed(2)} kn`;
+    currentCalcMarker = marker;
   };
 
   twaInput.addEventListener('input', updateSpeed);
@@ -513,6 +542,15 @@ export async function mountPolarWidget({
     },
     setRouteMarker(markerInput) {
       currentRouteMarker = clampMarker(markerInput, true);
+      if (currentRouteMarker) {
+        // Keep calculator aligned to route point so the route marker visually dominates;
+        // manual calculator edits can still move the red marker away afterward.
+        syncCalculatorToMarker(currentRouteMarker);
+      }
+      updatePlot();
+    },
+    setMapPalette(palette) {
+      currentMapPalette = Array.isArray(palette) ? palette : null;
       updatePlot();
     },
     widget,
