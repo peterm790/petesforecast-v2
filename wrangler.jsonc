@@ -1,6 +1,7 @@
 {
   "name": "petesforecast-v2",
   "compatibility_date": "2025-10-22",
+  "main": "worker.js",
   "assets": {
     "directory": "./dist"
   }

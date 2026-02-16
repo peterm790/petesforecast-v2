@@ -100,17 +100,8 @@ const routingControl = new RoutingControl(map);
 let polarOverlayController = null;
 let polarOverlayRoot = null;
 let boatBtn = null;
-const POLAR_CLOUDFLARE_BASE_URL = 'https://data.offshoreweatherrouting.com/polars';
-const POLAR_LOCAL_PROXY_BASE_URL = '/cf-polars';
-const isLocalDevHost = () => {
-    if (typeof window === 'undefined') return false;
-    const host = window.location.hostname;
-    return host === 'localhost' || host === '127.0.0.1';
-};
-const buildPolarUrl = (polarName) => {
-    const base = isLocalDevHost() ? POLAR_LOCAL_PROXY_BASE_URL : POLAR_CLOUDFLARE_BASE_URL;
-    return `${base}/${encodeURIComponent(polarName)}.pol`;
-};
+const POLAR_PROXY_BASE_URL = '/cf-polars';
+const buildPolarUrl = (polarName) => `${POLAR_PROXY_BASE_URL}/${encodeURIComponent(polarName)}.pol`;
 let currentRoutingPolar = routingControl.getPolarFile();
 const getRoutingPolarOptions = () => routingControl.getPolarOptions();
 // Remove initial mount here, we will mount it inside the menu stack later
@@ -723,40 +714,54 @@ function setPolarOverlayOpen(isOpen) {
     }
 }
 
+function cleanupFailedPolarOverlayMount() {
+    if (polarOverlayRoot && polarOverlayRoot.parentNode) {
+        polarOverlayRoot.parentNode.removeChild(polarOverlayRoot);
+    }
+    polarOverlayRoot = null;
+    polarOverlayController = null;
+    if (boatBtn) boatBtn.classList.remove('active');
+}
+
 async function togglePolarOverlay() {
     if (!polarOverlayController) {
         polarOverlayRoot = document.createElement('div');
         polarOverlayRoot.className = 'pf-polar-overlay-root';
         document.body.appendChild(polarOverlayRoot);
 
-        const mod = await import('./polars/index.js');
-        const requestedPolar = currentRoutingPolar;
-        polarOverlayController = await mod.mountPolarWidget({
-            host: polarOverlayRoot,
-            title: `${requestedPolar}.pol`,
-            polarFile: buildPolarUrl(requestedPolar),
-            polarOptions: getRoutingPolarOptions(),
-            onPolarSelect: (polarName) => routingControl.setPolarFile(polarName),
-            standalone: false,
-            showClose: true,
-            placement: 'top-right',
-            onClose: () => setPolarOverlayOpen(false)
-        });
-        if (currentRoutingPolar !== requestedPolar && typeof polarOverlayController.setPolarSource === 'function') {
-            await polarOverlayController.setPolarSource({
-                title: `${currentRoutingPolar}.pol`,
-                polarFile: buildPolarUrl(currentRoutingPolar),
-                polarName: currentRoutingPolar
+        try {
+            const mod = await import('./polars/index.js');
+            const requestedPolar = currentRoutingPolar;
+            polarOverlayController = await mod.mountPolarWidget({
+                host: polarOverlayRoot,
+                title: `${requestedPolar}.pol`,
+                polarFile: buildPolarUrl(requestedPolar),
+                polarOptions: getRoutingPolarOptions(),
+                onPolarSelect: (polarName) => routingControl.setPolarFile(polarName),
+                standalone: false,
+                showClose: true,
+                placement: 'top-right',
+                onClose: () => setPolarOverlayOpen(false)
             });
+            if (currentRoutingPolar !== requestedPolar && typeof polarOverlayController.setPolarSource === 'function') {
+                await polarOverlayController.setPolarSource({
+                    title: `${currentRoutingPolar}.pol`,
+                    polarFile: buildPolarUrl(currentRoutingPolar),
+                    polarName: currentRoutingPolar
+                });
+            }
+            if (typeof polarOverlayController.setRouteMarker === 'function') {
+                polarOverlayController.setRouteMarker(latestRoutePolarMarker);
+            }
+            if (typeof polarOverlayController.setMapPalette === 'function') {
+                polarOverlayController.setMapPalette(latestMapPalette);
+            }
+            setPolarOverlayOpen(true);
+            return;
+        } catch (err) {
+            cleanupFailedPolarOverlayMount();
+            throw err;
         }
-        if (typeof polarOverlayController.setRouteMarker === 'function') {
-            polarOverlayController.setRouteMarker(latestRoutePolarMarker);
-        }
-        if (typeof polarOverlayController.setMapPalette === 'function') {
-            polarOverlayController.setMapPalette(latestMapPalette);
-        }
-        setPolarOverlayOpen(true);
-        return;
     }
 
     const currentlyOpen = boatBtn ? boatBtn.classList.contains('active') : false;

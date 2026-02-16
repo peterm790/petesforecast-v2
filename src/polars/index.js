@@ -1,12 +1,9 @@
 import './polar.css';
 
-const DEFAULT_CLOUDFLARE_POLAR = 'https://data.offshoreweatherrouting.com/polars/volvo70.pol';
 const DEFAULT_LOCAL_PROXY_POLAR = '/cf-polars/volvo70.pol';
 function defaultPolarUrl() {
-  if (typeof window === 'undefined') return DEFAULT_CLOUDFLARE_POLAR;
-  const host = window.location.hostname;
-  if (host === 'localhost' || host === '127.0.0.1') return DEFAULT_LOCAL_PROXY_POLAR;
-  return DEFAULT_CLOUDFLARE_POLAR;
+  if (typeof window === 'undefined') return DEFAULT_LOCAL_PROXY_POLAR;
+  return DEFAULT_LOCAL_PROXY_POLAR;
 }
 
 function parsePol(text) {
